@@ -9,6 +9,17 @@ param(
     
     [Alias('d')]
     [switch]$DebugMode,
+
+    # Rebuild font/icon/search/Store caches (restarts Explorer, re-indexes for hours)
+    [switch]$Repair,
+
+    # Reset the Winsock catalog (needs a reboot; can break VPN or security software)
+    [Alias('reset-network')]
+    [switch]$ResetNetwork,
+
+    # Skip the confirmation prompt (needed for unattended runs)
+    [Alias('y')]
+    [switch]$Yes,
     
     [Alias('h')]
     [switch]$ShowHelp
@@ -48,24 +59,28 @@ function Show-OptimizeHelp {
     Write-Host "$esc[33mUsage:$esc[0m mo optimize [options]"
     Write-Host ""
     Write-Host "$esc[33mOptions:$esc[0m"
-    Write-Host "  --dry-run    Preview changes without applying"
-    Write-Host "  --debug      Enable debug logging"
-    Write-Host "  --help       Show this help message"
+    Write-Host "  --dry-run        Preview changes without applying"
+    Write-Host "  --repair         Also rebuild font, icon, search and Store caches"
+    Write-Host "  --reset-network  Also reset the Winsock catalog (reboot required)"
+    Write-Host "  --yes            Skip the confirmation prompt"
+    Write-Host "  --debug          Enable debug logging"
+    Write-Host "  --help           Show this help message"
     Write-Host ""
     Write-Host "$esc[33mWhat it does:$esc[0m"
     Write-Host "  - Disk optimization (TRIM/Defrag)"
     Write-Host "  - Windows Search & Update check"
-    Write-Host "  - Network & DNS optimization"
-    Write-Host "  - System cache cleanup & repairs"
-    Write-Host "    (Font cache, Icon cache, Store cache)"
+    Write-Host "  - DNS and ARP cache flush"
+    Write-Host "  - Health checks (disk, startup programs, updates)"
+    Write-Host ""
+    Write-Host "$esc[33mOnly when asked:$esc[0m"
+    Write-Host "  --repair         Font cache, icon cache (restarts Explorer),"
+    Write-Host "                   search index (rebuild can take hours), Store cache"
+    Write-Host "  --reset-network  Winsock reset; can break VPN/security software"
     Write-Host ""
     Write-Host "$esc[33mExamples:$esc[0m"
-    Write-Host "  mo optimize              # Run all optimizations"
+    Write-Host "  mo optimize              # Safe maintenance and checks"
     Write-Host "  mo optimize --dry-run    # Preview what would happen"
-    Write-Host ""
-    Write-Host "$esc[33mExamples:$esc[0m"
-    Write-Host "  mo optimize            # Run all optimizations"
-    Write-Host "  mo optimize --dry-run  # Preview what would happen"
+    Write-Host "  mo optimize --repair     # Also rebuild system caches"
     Write-Host ""
 }
 
@@ -282,20 +297,27 @@ function Optimize-Network {
     }
 
     if ($script:DryRun) {
-        Write-Host "  $esc[33m$($script:Icons.DryRun)$esc[0m Would reset Winsock catalog"
-        Write-Host "  $esc[33m$($script:Icons.DryRun)$esc[0m Would reset TCP/IP stack"
-        $script:OptimizationsApplied += 2
+        if ($script:ResetNetwork) {
+            Write-Host "  $esc[33m$($script:Icons.DryRun)$esc[0m Would reset Winsock catalog (reboot required)"
+            $script:OptimizationsApplied++
+        }
+        Write-Host "  $esc[33m$($script:Icons.DryRun)$esc[0m Would clear ARP cache"
+        $script:OptimizationsApplied++
         return
     }
 
-    try {
-        # Reset Winsock
-        $null = netsh winsock reset 2>&1
-        Write-Host "  $esc[32m$($script:Icons.Success)$esc[0m Winsock catalog reset"
-        $script:OptimizationsApplied++
-    }
-    catch {
-        Write-Host "  $esc[31m$($script:Icons.Error)$esc[0m Winsock reset failed"
+    # Winsock reset drops layered providers (VPN, filtering, security software) and
+    # only takes effect after a reboot, so it is a repair the user must ask for.
+    if ($script:ResetNetwork) {
+        try {
+            $null = netsh winsock reset 2>&1
+            Write-Host "  $esc[32m$($script:Icons.Success)$esc[0m Winsock catalog reset"
+            Write-Host "  $esc[33m$($script:Icons.Warning)$esc[0m Restart Windows to apply the network reset"
+            $script:OptimizationsApplied++
+        }
+        catch {
+            Write-Host "  $esc[31m$($script:Icons.Error)$esc[0m Winsock reset failed"
+        }
     }
 
     try {
@@ -856,6 +878,7 @@ function Main {
 
     # Set dry-run mode
     $script:DryRun = $DryRun
+    $script:ResetNetwork = [bool]$ResetNetwork
 
     # Clear screen
     Clear-Host
@@ -867,6 +890,28 @@ function Main {
 
     if ($script:DryRun) {
         Write-Host "$esc[33m$($script:Icons.DryRun) DRY RUN MODE$esc[0m - No changes will be made"
+        Write-Host ""
+    }
+    elseif (-not $Yes) {
+        if ([Console]::IsInputRedirected) {
+            Write-MoleError "No interactive console to confirm. Use --dry-run to preview or --yes to confirm."
+            return
+        }
+
+        Write-Host "This will change system settings:"
+        Write-Host "  $($script:Icons.List) Optimize the system drive, flush DNS and ARP caches"
+        if ($Repair) {
+            Write-Host "  $($script:Icons.List) Rebuild font, icon, search and Store caches $esc[90m(Explorer restarts; search re-indexes for hours)$esc[0m"
+        }
+        if ($ResetNetwork) {
+            Write-Host "  $($script:Icons.List) Reset Winsock $esc[90m(reboot required; can affect VPN/security software)$esc[0m"
+        }
+        Write-Host ""
+        if (-not (Read-Confirmation -Prompt "Continue?" -Default $false)) {
+            Write-Host ""
+            Write-Host "Cancelled. Nothing was changed."
+            return
+        }
         Write-Host ""
     }
 
@@ -884,14 +929,19 @@ function Main {
     Test-DiskHealth
     Test-WindowsUpdate
 
-    # Run repairs (consolidated)
+    # Repairs rebuild working caches; only run them when asked
     Write-Host ""
     Write-Host "$esc[34m$($script:Icons.Arrow) System Repairs$esc[0m"
 
-    Repair-FontCache
-    Repair-StoreCache
-    Repair-SearchIndex
-    Repair-IconCache
+    if ($Repair) {
+        Repair-FontCache
+        Repair-StoreCache
+        Repair-SearchIndex
+        Repair-IconCache
+    }
+    else {
+        Write-Host "  $esc[90mSkipped. Use --repair if fonts, icons, search or the Store misbehave$esc[0m"
+    }
 
     # System file check is slow, ask first
     if (-not $script:DryRun -and (Test-IsAdmin)) {

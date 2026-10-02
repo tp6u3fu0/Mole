@@ -24,7 +24,7 @@ BeforeAll {
 
     function Get-InstalledApplications { param([switch]$ForceRescan) }
     function Show-AppSelectionMenu { param([array]$Apps) }
-    function Uninstall-SelectedApps { param([array]$Apps) throw "Real uninstall must never run" }
+    function Uninstall-SelectedApps { param([array]$Apps, [array]$AllApps) throw "Real uninstall must never run" }
     function Write-Info { param([string]$Message) }
     function Write-MoleWarning { param([string]$Message) }
 }

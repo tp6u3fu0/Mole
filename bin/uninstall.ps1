@@ -32,7 +32,8 @@ $libDir = Join-Path (Split-Path -Parent $scriptDir) "lib"
 # ============================================================================
 
 $script:CacheDir = "$env:USERPROFILE\.cache\mole"
-$script:AppCacheFile = "$script:CacheDir\app_scan_cache.json"
+# v2: entries carry RegistryKey/QuietUninstallString used to verify removal
+$script:AppCacheFile = "$script:CacheDir\app_scan_cache_v2.json"
 $script:CacheTTLHours = 24
 
 # ============================================================================
@@ -179,10 +180,12 @@ function Get-InstalledApplications {
                 $publisher = $null
                 $version = $null
                 $installLocation = $null
+                $quietUninstallString = $null
 
                 try { $publisher = $item.Publisher } catch { }
                 try { $version = $item.DisplayVersion } catch { }
                 try { $installLocation = $item.InstallLocation } catch { }
+                try { $quietUninstallString = $item.QuietUninstallString } catch { }
 
                 $apps += [PSCustomObject]@{
                     Name = $displayName
@@ -192,6 +195,9 @@ function Get-InstalledApplications {
                     SizeHuman = Format-ByteSize -Bytes ($sizeKB * 1024)
                     InstallLocation = $installLocation
                     UninstallString = $uninstallString
+                    QuietUninstallString = $quietUninstallString
+                    RegistryKey = $item.PSPath
+                    PackageFullName = $null
                     InstallDate = $installDate
                     Source = "Registry"
                 }
@@ -239,6 +245,8 @@ function Get-InstalledApplications {
                 SizeHuman = Format-ByteSize -Bytes ($sizeKB * 1024)
                 InstallLocation = $uwp.InstallLocation
                 UninstallString = $null
+                QuietUninstallString = $null
+                RegistryKey = $null
                 PackageFullName = $uwp.PackageFullName
                 InstallDate = $null
                 Source = "WindowsStore"
@@ -452,12 +460,242 @@ function Show-AppSelectionMenu {
 # Uninstallation
 # ============================================================================
 
+function Split-UninstallCommand {
+    <#
+    .SYNOPSIS
+        Split a registry uninstall command into executable and arguments
+    .DESCRIPTION
+        Runs the executable directly instead of through cmd.exe, so quoting in the
+        registry value cannot be re-interpreted as shell syntax.
+    #>
+    param([string]$CommandLine)
+
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) {
+        return $null
+    }
+
+    $command = [Environment]::ExpandEnvironmentVariables($CommandLine.Trim())
+
+    if ($command.StartsWith('"')) {
+        $end = $command.IndexOf('"', 1)
+        if ($end -lt 2) {
+            return $null
+        }
+        return @{
+            FilePath  = $command.Substring(1, $end - 1)
+            Arguments = $command.Substring($end + 1).Trim()
+        }
+    }
+
+    # Unquoted: the executable ends at the first ".exe" (paths may contain spaces)
+    $match = [regex]::Match($command, '^(.+?\.exe)(?:\s+(.*))?$', 'IgnoreCase')
+    if ($match.Success) {
+        return @{
+            FilePath  = $match.Groups[1].Value
+            Arguments = $match.Groups[2].Value.Trim()
+        }
+    }
+
+    return @{
+        FilePath  = $command
+        Arguments = ""
+    }
+}
+
+function Get-AppProperty {
+    <#
+    .SYNOPSIS
+        Read an app property that may be missing (older cache entries) under strict mode
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [object]$App,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $property = $App.PSObject.Properties[$Name]
+    if ($property) {
+        return $property.Value
+    }
+    return $null
+}
+
+function Test-AppStillInstalled {
+    <#
+    .SYNOPSIS
+        True while the app's registration still exists (or cannot be checked)
+    #>
+    param([Parameter(Mandatory)][object]$App)
+
+    if ($App.Source -eq "WindowsStore") {
+        $packageFullName = Get-AppProperty -App $App -Name "PackageFullName"
+        if (-not $packageFullName) {
+            return $true
+        }
+        return [bool](Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.PackageFullName -eq $packageFullName })
+    }
+
+    $registryKey = Get-AppProperty -App $App -Name "RegistryKey"
+    if (-not $registryKey) {
+        return $true
+    }
+    return Test-Path -LiteralPath $registryKey
+}
+
+function Wait-AppRemoved {
+    <#
+    .SYNOPSIS
+        Give uninstallers that hand off to a child process a moment to finish
+    #>
+    param(
+        [Parameter(Mandatory)][object]$App,
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ($true) {
+        if (-not (Test-AppStillInstalled -App $App)) {
+            return $true
+        }
+        if ((Get-Date) -ge $deadline) {
+            return $false
+        }
+        Start-Sleep -Milliseconds 1000
+    }
+}
+
+function Invoke-AppUninstaller {
+    <#
+    .SYNOPSIS
+        Run an app's own uninstaller once
+    .DESCRIPTION
+        Uses QuietUninstallString when the vendor registered one. Otherwise the regular
+        uninstaller runs once with its own UI; guessing silent switches can launch the
+        uninstaller repeatedly or pass flags it misreads.
+    #>
+    param([Parameter(Mandatory)][object]$App)
+
+    $esc = [char]27
+
+    if ($App.Source -eq "WindowsStore") {
+        Remove-AppxPackage -Package $App.PackageFullName -ErrorAction Stop
+        return
+    }
+
+    $uninstallString = Get-AppProperty -App $App -Name "UninstallString"
+    $quietUninstallString = Get-AppProperty -App $App -Name "QuietUninstallString"
+
+    if ($uninstallString -match '(?i)msiexec') {
+        $productCode = [regex]::Match($uninstallString, '\{[0-9A-Fa-f-]+\}').Value
+        if (-not $productCode) {
+            throw "No MSI product code in uninstall command"
+        }
+
+        $process = Start-Process -FilePath "msiexec.exe" `
+            -ArgumentList "/x", $productCode, "/qn", "/norestart" `
+            -Wait -PassThru -NoNewWindow
+
+        # 0 = done, 3010 = done, restart required
+        if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            Write-Host " $esc[33m(opening the uninstaller window)$esc[0m" -NoNewline
+            Start-Process -FilePath "msiexec.exe" -ArgumentList "/x", $productCode -Wait
+        }
+        return
+    }
+
+    $commandLine = if ($quietUninstallString) { $quietUninstallString } else { $uninstallString }
+    $command = Split-UninstallCommand -CommandLine $commandLine
+    if ($null -eq $command) {
+        throw "Could not parse uninstall command"
+    }
+
+    if (-not $quietUninstallString) {
+        Write-Host " $esc[33m(follow the uninstaller window)$esc[0m" -NoNewline
+    }
+
+    $startParams = @{
+        FilePath = $command.FilePath
+        Wait     = $true
+    }
+    if ($command.Arguments) {
+        $startParams.ArgumentList = $command.Arguments
+    }
+    Start-Process @startParams
+}
+
+function Test-PathInside {
+    param(
+        [string]$Path,
+        [string]$Parent
+    )
+
+    try {
+        $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        $normalizedParent = [System.IO.Path]::GetFullPath($Parent).TrimEnd('\')
+    }
+    catch {
+        return $false
+    }
+
+    return $normalizedPath -eq $normalizedParent -or
+           $normalizedPath.StartsWith("$normalizedParent\", [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-LeftoverFolder {
+    <#
+    .SYNOPSIS
+        Decide whether an uninstalled app's install folder may be offered for removal
+    .OUTPUTS
+        @{ Path; Reason } - Path is $null when the folder must be kept; Reason says why
+    #>
+    param(
+        [Parameter(Mandatory)][object]$App,
+        [array]$OtherApps = @()
+    )
+
+    $location = Get-AppProperty -App $App -Name "InstallLocation"
+    if ([string]::IsNullOrWhiteSpace($location)) {
+        return @{ Path = $null; Reason = "no install folder registered" }
+    }
+
+    $location = $location.Trim().Trim('"').TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $location -PathType Container)) {
+        return @{ Path = $null; Reason = "install folder already gone" }
+    }
+
+    if (-not (Test-SafePath -Path $location)) {
+        return @{ Path = $null; Reason = "protected location, kept: $location" }
+    }
+
+    # A folder that also holds another app (shared "D:\Tools", a vendor folder) is not leftover
+    foreach ($other in $OtherApps) {
+        $otherLocation = Get-AppProperty -App $other -Name "InstallLocation"
+        if ([string]::IsNullOrWhiteSpace($otherLocation)) {
+            continue
+        }
+        $otherLocation = $otherLocation.Trim().Trim('"')
+        if ((Test-PathInside -Path $otherLocation -Parent $location) -or
+            (Test-PathInside -Path $location -Parent $otherLocation)) {
+            return @{ Path = $null; Reason = "shared with $($other.Name), kept: $location" }
+        }
+    }
+
+    return @{ Path = $location; Reason = $null }
+}
+
 function Uninstall-SelectedApps {
     <#
     .SYNOPSIS
         Uninstall the selected applications
     #>
-    param([array]$Apps)
+    param(
+        [array]$Apps,
+
+        # Every installed app, used to keep folders shared with apps that stay
+        [array]$AllApps = @()
+    )
 
     $esc = [char]27
 
@@ -467,79 +705,31 @@ function Uninstall-SelectedApps {
 
     $successCount = 0
     $failCount = 0
+    $leftovers = @()
 
     foreach ($app in $Apps) {
         Write-Host "$esc[34m$($script:Icons.Arrow)$esc[0m Uninstalling: $($app.Name)" -NoNewline
 
         try {
-            if ($app.Source -eq "WindowsStore") {
-                # UWP app
-                if ($app.PackageFullName) {
-                    Remove-AppxPackage -Package $app.PackageFullName -ErrorAction Stop
-                    Write-Host " $esc[32m$($script:Icons.Success)$esc[0m"
-                    $successCount++
+            Invoke-AppUninstaller -App $app
+
+            if (Wait-AppRemoved -App $app) {
+                Write-Host " $esc[32m$($script:Icons.Success)$esc[0m"
+                $successCount++
+
+                $otherApps = @($AllApps | Where-Object { $_ -ne $app -and $_.Name -ne $app.Name })
+                $leftover = Get-LeftoverFolder -App $app -OtherApps $otherApps
+                if ($leftover.Path) {
+                    $leftovers += [PSCustomObject]@{ App = $app.Name; Path = $leftover.Path }
+                }
+                elseif ($leftover.Reason -and $leftover.Reason -notmatch '^(no install folder|install folder already gone)') {
+                    Write-Host "  $esc[90mLeftover files: $($leftover.Reason)$esc[0m"
                 }
             }
             else {
-                # Registry app with uninstall string
-                $uninstallString = $app.UninstallString
-
-                # Handle different uninstall types
-                if ($uninstallString -like "MsiExec.exe*") {
-                    # MSI uninstall
-                    $productCode = [regex]::Match($uninstallString, '\{[0-9A-F-]+\}').Value
-                    if ($productCode) {
-                        $process = Start-Process -FilePath "msiexec.exe" `
-                            -ArgumentList "/x", $productCode, "/qn", "/norestart" `
-                            -Wait -PassThru -NoNewWindow
-
-                        if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-                            Write-Host " $esc[32m$($script:Icons.Success)$esc[0m"
-                            $successCount++
-                        }
-                        else {
-                            Write-Host " $esc[33m(requires interaction)$esc[0m"
-                            # Fallback to interactive uninstall
-                            Start-Process -FilePath "msiexec.exe" -ArgumentList "/x", $productCode -Wait
-                            $successCount++
-                        }
-                    }
-                }
-                else {
-                    # Direct executable uninstall
-                    # Try silent uninstall first
-                    $silentArgs = @("/S", "/silent", "/quiet", "-s", "-silent", "-quiet", "/VERYSILENT")
-                    $uninstalled = $false
-
-                    foreach ($arg in $silentArgs) {
-                        try {
-                            $process = Start-Process -FilePath "cmd.exe" `
-                                -ArgumentList "/c", "`"$uninstallString`"", $arg `
-                                -Wait -PassThru -NoNewWindow -ErrorAction SilentlyContinue
-
-                            if ($process.ExitCode -eq 0) {
-                                Write-Host " $esc[32m$($script:Icons.Success)$esc[0m"
-                                $successCount++
-                                $uninstalled = $true
-                                break
-                            }
-                        }
-                        catch { }
-                    }
-
-                    if (-not $uninstalled) {
-                        # Fallback to interactive - don't count as automatic success
-                        Write-Host " $esc[33m(launching uninstaller - verify completion manually)$esc[0m"
-                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$uninstallString`"" -Wait
-                        # Note: Not incrementing $successCount since we can't verify if user completed or cancelled
-                    }
-                }
-            }
-
-            # Clean leftover files
-            if ($app.InstallLocation -and (Test-Path $app.InstallLocation)) {
-                Write-Host "  $esc[90mCleaning leftover files...$esc[0m"
-                $null = Remove-SafeItem -Path $app.InstallLocation -Description "Leftover files" -Recurse
+                # Cancelled, failed, or still running: its files are still in use
+                Write-Host " $esc[33m(not confirmed - app is still registered, files kept)$esc[0m"
+                $failCount++
             }
         }
         catch {
@@ -549,12 +739,32 @@ function Uninstall-SelectedApps {
         }
     }
 
+    # Leftover folders are removed only after the user sees exactly which ones
+    if ($leftovers.Count -gt 0) {
+        Write-Host ""
+        Write-Host "$esc[33mLeftover install folders:$esc[0m"
+        foreach ($leftover in $leftovers) {
+            $size = Format-ByteSize -Bytes (Get-PathSize -Path $leftover.Path)
+            Write-Host "  $($script:Icons.List) $($leftover.Path) $esc[90m($($leftover.App), $size)$esc[0m"
+        }
+        Write-Host ""
+
+        if (Read-Confirmation -Prompt "Delete these folders permanently?" -Default $false) {
+            foreach ($leftover in $leftovers) {
+                $null = Remove-SafeItem -Path $leftover.Path -Description "Leftover files ($($leftover.App))" -Recurse
+            }
+        }
+        else {
+            Write-Info "Leftover folders kept"
+        }
+    }
+
     # Summary
     Write-Host ""
     Write-Host "$esc[1;35mUninstall Complete$esc[0m"
     Write-Host "  Successfully uninstalled: $esc[32m$successCount$esc[0m"
     if ($failCount -gt 0) {
-        Write-Host "  Failed: $esc[31m$failCount$esc[0m"
+        Write-Host "  Not confirmed or failed: $esc[33m$failCount$esc[0m"
     }
     Write-Host ""
 
@@ -617,7 +827,7 @@ function Main {
     $confirm = Read-Host "Continue? (y/N)"
 
     if ($confirm -eq 'y' -or $confirm -eq 'Y') {
-        Uninstall-SelectedApps -Apps $selected
+        Uninstall-SelectedApps -Apps $selected -AllApps $apps
     }
     else {
         Write-Info "Cancelled"

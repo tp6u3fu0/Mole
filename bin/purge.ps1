@@ -48,25 +48,38 @@ $script:DefaultSearchPaths = @(
 $script:ConfigFile = "$env:USERPROFILE\.config\mole\purge_paths.txt"
 
 # Artifact patterns to clean
+# Markers: the artifact only counts in a project that has one of these files, so a
+# folder that merely shares the name (a Node CLI's bin\, Go's committed vendor\)
+# is never mistaken for build output. No Markers = any project.
+$script:PythonMarkers = @("requirements.txt", "pyproject.toml", "setup.py", "Pipfile")
+$script:NodeMarkers = @("package.json")
+$script:DotNetMarkers = @("*.csproj", "*.fsproj", "*.vbproj")
+$script:GradleMarkers = @("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
+
 $script:ArtifactPatterns = @(
-    @{ Name = "node_modules"; Type = "Directory"; Language = "JavaScript/Node.js" }
-    @{ Name = "vendor"; Type = "Directory"; Language = "PHP/Go" }
-    @{ Name = ".venv"; Type = "Directory"; Language = "Python" }
-    @{ Name = "venv"; Type = "Directory"; Language = "Python" }
-    @{ Name = "__pycache__"; Type = "Directory"; Language = "Python" }
-    @{ Name = ".pytest_cache"; Type = "Directory"; Language = "Python" }
-    @{ Name = "target"; Type = "Directory"; Language = "Rust/Java" }
-    @{ Name = "build"; Type = "Directory"; Language = "General" }
-    @{ Name = "dist"; Type = "Directory"; Language = "General" }
-    @{ Name = ".next"; Type = "Directory"; Language = "Next.js" }
-    @{ Name = ".nuxt"; Type = "Directory"; Language = "Nuxt.js" }
-    @{ Name = ".turbo"; Type = "Directory"; Language = "Turborepo" }
-    @{ Name = ".parcel-cache"; Type = "Directory"; Language = "Parcel" }
-    @{ Name = "bin"; Type = "Directory"; Language = ".NET" }
-    @{ Name = "obj"; Type = "Directory"; Language = ".NET" }
-    @{ Name = ".gradle"; Type = "Directory"; Language = "Java/Gradle" }
-    @{ Name = ".idea"; Type = "Directory"; Language = "JetBrains IDE" }
+    @{ Name = "node_modules"; Type = "Directory"; Language = "JavaScript/Node.js"; Markers = $script:NodeMarkers }
+    @{ Name = ".next"; Type = "Directory"; Language = "Next.js"; Markers = $script:NodeMarkers }
+    @{ Name = ".nuxt"; Type = "Directory"; Language = "Nuxt.js"; Markers = $script:NodeMarkers }
+    @{ Name = ".turbo"; Type = "Directory"; Language = "Turborepo"; Markers = $script:NodeMarkers }
+    @{ Name = ".parcel-cache"; Type = "Directory"; Language = "Parcel"; Markers = $script:NodeMarkers }
+    @{ Name = "dist"; Type = "Directory"; Language = "JavaScript/Node.js"; Markers = $script:NodeMarkers }
+    @{ Name = "vendor"; Type = "Directory"; Language = "PHP"; Markers = @("composer.json") }
+    @{ Name = ".venv"; Type = "Directory"; Language = "Python"; Markers = $script:PythonMarkers }
+    @{ Name = "venv"; Type = "Directory"; Language = "Python"; Markers = $script:PythonMarkers }
+    @{ Name = "__pycache__"; Type = "Directory"; Language = "Python"; Markers = $script:PythonMarkers }
+    @{ Name = ".pytest_cache"; Type = "Directory"; Language = "Python"; Markers = $script:PythonMarkers }
+    @{ Name = "target"; Type = "Directory"; Language = "Rust/Java"; Markers = @("Cargo.toml", "pom.xml") }
+    @{ Name = "build"; Type = "Directory"; Language = "Java/Gradle"; Markers = $script:GradleMarkers }
+    @{ Name = ".gradle"; Type = "Directory"; Language = "Java/Gradle"; Markers = $script:GradleMarkers }
+    @{ Name = "bin"; Type = "Directory"; Language = ".NET"; Markers = $script:DotNetMarkers }
+    @{ Name = "obj"; Type = "Directory"; Language = ".NET"; Markers = $script:DotNetMarkers }
     @{ Name = "*.log"; Type = "File"; Language = "Logs" }
+)
+
+# Folders that hold dependencies or output; marker files inside them are not projects
+$script:NonProjectDirectories = @(
+    "node_modules", "vendor", ".git", ".venv", "venv", "site-packages",
+    "target", "build", "dist", "bin", "obj", ".gradle"
 )
 
 $script:TotalSizeCleaned = 0
@@ -227,9 +240,7 @@ function Find-Projects {
                     # Skip if already found or if it's inside node_modules, etc.
                     $existingPaths = @($projects | ForEach-Object { $_.Path })
                     if ($existingPaths -contains $projectPath) { continue }
-                    if ($projectPath -like "*\node_modules\*") { continue }
-                    if ($projectPath -like "*\vendor\*") { continue }
-                    if ($projectPath -like "*\.git\*") { continue }
+                    if (Test-InsideNonProjectDirectory -Path $projectPath -SearchRoot $searchPath) { continue }
 
                     # Find artifacts in this project
                     $artifacts = @(Find-ProjectArtifacts -ProjectPath $projectPath)
@@ -262,6 +273,74 @@ function Find-Projects {
     return $projects | Sort-Object -Property TotalSizeKB -Descending
 }
 
+function Test-InsideNonProjectDirectory {
+    <#
+    .SYNOPSIS
+        True when a path lies inside node_modules, a virtualenv, build output, ...
+    #>
+    param(
+        [string]$Path,
+        [string]$SearchRoot
+    )
+
+    $relative = $Path
+    if ($SearchRoot -and $Path.StartsWith($SearchRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        $relative = $Path.Substring($SearchRoot.Length)
+    }
+
+    foreach ($segment in ($relative -split '[\\/]')) {
+        if ($segment -and $script:NonProjectDirectories -contains $segment) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Test-ProjectHasMarker {
+    param(
+        [string]$ProjectPath,
+        [string[]]$Markers
+    )
+
+    foreach ($marker in $Markers) {
+        if (Get-ChildItem -LiteralPath $ProjectPath -Filter $marker -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Test-GitTracksPath {
+    <#
+    .SYNOPSIS
+        True when git tracks the path or anything inside it
+    .DESCRIPTION
+        Build output is not committed; anything that is, is source.
+        Returns $false when git is unavailable or the project is not a repository.
+    #>
+    param(
+        [string]$ProjectPath,
+        [string]$ItemPath
+    )
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    try {
+        $inside = & git -C $ProjectPath rev-parse --is-inside-work-tree 2>$null
+        if ($LASTEXITCODE -ne 0 -or $inside -ne 'true') {
+            return $false
+        }
+
+        $tracked = & git -C $ProjectPath ls-files -- $ItemPath 2>$null | Select-Object -First 1
+        return -not [string]::IsNullOrWhiteSpace($tracked)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Find-ProjectArtifacts {
     <#
     .SYNOPSIS
@@ -272,32 +351,38 @@ function Find-ProjectArtifacts {
     $artifacts = @()
 
     foreach ($pattern in $script:ArtifactPatterns) {
-        $items = Get-ChildItem -Path $ProjectPath -Filter $pattern.Name -Force -ErrorAction SilentlyContinue
+        if ($pattern.ContainsKey('Markers') -and -not (Test-ProjectHasMarker -ProjectPath $ProjectPath -Markers $pattern.Markers)) {
+            continue
+        }
+
+        $items = Get-ChildItem -LiteralPath $ProjectPath -Filter $pattern.Name -Force -ErrorAction SilentlyContinue
 
         foreach ($item in $items) {
-            if ($pattern.Type -eq "Directory" -and $item.PSIsContainer) {
-                $sizeKB = Get-PathSizeKB -Path $item.FullName
-
-                $artifacts += [PSCustomObject]@{
-                    Path = $item.FullName
-                    Name = $item.Name
-                    Type = "Directory"
-                    Language = $pattern.Language
-                    SizeKB = $sizeKB
-                    SizeHuman = Format-ByteSize -Bytes ($sizeKB * 1024)
-                }
+            $isDirectoryMatch = $pattern.Type -eq "Directory" -and $item.PSIsContainer
+            $isFileMatch = $pattern.Type -eq "File" -and -not $item.PSIsContainer
+            if (-not ($isDirectoryMatch -or $isFileMatch)) {
+                continue
             }
-            elseif ($pattern.Type -eq "File" -and -not $item.PSIsContainer) {
-                $sizeKB = [Math]::Ceiling($item.Length / 1024)
 
-                $artifacts += [PSCustomObject]@{
-                    Path = $item.FullName
-                    Name = $item.Name
-                    Type = "File"
-                    Language = $pattern.Language
-                    SizeKB = $sizeKB
-                    SizeHuman = Format-ByteSize -Bytes ($sizeKB * 1024)
-                }
+            if (Test-GitTracksPath -ProjectPath $ProjectPath -ItemPath $item.FullName) {
+                Write-Debug "Skipping git-tracked path: $($item.FullName)"
+                continue
+            }
+
+            $sizeKB = if ($isDirectoryMatch) {
+                Get-PathSizeKB -Path $item.FullName
+            }
+            else {
+                [Math]::Ceiling($item.Length / 1024)
+            }
+
+            $artifacts += [PSCustomObject]@{
+                Path = $item.FullName
+                Name = $item.Name
+                Type = $pattern.Type
+                Language = $pattern.Language
+                SizeKB = $sizeKB
+                SizeHuman = Format-ByteSize -Bytes ($sizeKB * 1024)
             }
         }
     }
