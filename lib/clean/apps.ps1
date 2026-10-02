@@ -453,7 +453,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "NVIDIA recordings (>${DaysOld}d)"
+                    Remove-SafeItems -Paths $paths -Description "NVIDIA recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -466,7 +466,7 @@ function Clear-GameMediaFiles {
                          Where-Object { $_.LastWriteTime -lt $cutoffDate -and $_.Extension -match '\.(mp4|mkv|avi|mov)$' }
         if ($oldHighlights) {
             $paths = $oldHighlights | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "NVIDIA Highlights (>${DaysOld}d)"
+            Remove-SafeItems -Paths $paths -Description "NVIDIA Highlights (>${DaysOld}d)" -AllowUserData
         }
     }
     
@@ -486,7 +486,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "AMD ReLive recordings (>${DaysOld}d)"
+                    Remove-SafeItems -Paths $paths -Description "AMD ReLive recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -502,7 +502,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Xbox Game Bar captures (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Xbox Game Bar captures (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -517,7 +517,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Windows screenshots (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Windows screenshots (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -532,7 +532,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Windows screen recordings (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Windows screen recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -552,7 +552,7 @@ function Clear-GameMediaFiles {
                               Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldScreenshots) {
                 $paths = $oldScreenshots | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Steam screenshots (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Steam screenshots (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -564,7 +564,7 @@ function Clear-GameMediaFiles {
                     Where-Object { $_.LastWriteTime -lt $cutoffDate }
         if ($oldFiles) {
             $paths = $oldFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Steam exported screenshots (>${DaysOld}d)"
+            Remove-SafeItems -Paths $paths -Description "Steam exported screenshots (>${DaysOld}d)" -AllowUserData
         }
     }
     
@@ -578,7 +578,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "OBS recordings (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "OBS recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -594,7 +594,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate -and $_.Extension -match '\.(mp4|png)$' }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Game DVR recordings (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Game DVR recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -609,7 +609,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Medal.tv clips (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "Medal.tv clips (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -628,7 +628,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "Overwolf/Outplayed recordings (>${DaysOld}d)"
+                    Remove-SafeItems -Paths $paths -Description "Overwolf/Outplayed recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -659,7 +659,7 @@ function Clear-GameMediaFiles {
             if ($oldFiles) {
                 $gameName = (Split-Path (Split-Path $path -Parent) -Leaf)
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "$gameName replays (>${DaysOld}d)"
+                Remove-SafeItems -Paths $paths -Description "$gameName replays (>${DaysOld}d)" -AllowUserData
             }
         }
     }

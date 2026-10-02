@@ -37,34 +37,113 @@ function Test-SafePath {
     #>
     param(
         [Parameter(Mandatory)]
-        [string]$Path
+        [string]$Path,
+
+        [switch]$AllowUserData
     )
-    
+
     # Must have a path
     if ([string]::IsNullOrWhiteSpace($Path)) {
         Write-Debug "Empty path rejected"
         return $false
     }
-    
+
     # Resolve to full path
     $fullPath = Resolve-SafePath -Path $Path
     if (-not $fullPath) {
         Write-Debug "Could not resolve path: $Path"
         return $false
     }
-    
-    # Check protected paths
-    if (Test-ProtectedPath -Path $fullPath) {
+
+    # Check protected paths (on the raw path, so relative paths are still rejected)
+    if (Test-ProtectedPath -Path $Path -AllowUserData:$AllowUserData) {
         Write-Debug "Protected path rejected: $fullPath"
         return $false
     }
-    
+
     # Check whitelist
     if (Test-Whitelisted -Path $fullPath) {
         Write-Debug "Whitelisted path rejected: $fullPath"
         return $false
     }
-    
+
+    return $true
+}
+
+function Test-IsReparsePoint {
+    <#
+    .SYNOPSIS
+        True for junctions, symbolic links and other reparse points
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    return [bool]($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+}
+
+function Get-SafeFileSystemItem {
+    <#
+    .SYNOPSIS
+        Get-Item without wildcard expansion; $null when the path is missing or unreadable
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    try {
+        return Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    }
+    catch {
+        return $null
+    }
+}
+
+function Remove-ReparsePointLink {
+    <#
+    .SYNOPSIS
+        Remove a junction or symbolic link itself, never the data it points to
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    if ($Item -is [System.IO.DirectoryInfo]) {
+        # Non-recursive delete removes only the link; on a real non-empty
+        # directory it throws instead of descending.
+        [System.IO.Directory]::Delete($Item.FullName, $false)
+    }
+    else {
+        [System.IO.File]::Delete($Item.FullName)
+    }
+}
+
+function Test-SkipRunningApp {
+    <#
+    .SYNOPSIS
+        Report and skip an app's cache while the app is running
+    .DESCRIPTION
+        Deleting caches under a running app fails half-way on locked files and can
+        leave the app in an inconsistent state. Returns $true when the caller should skip.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$AppName,
+
+        [Parameter(Mandatory)]
+        [string[]]$ProcessNames
+    )
+
+    $running = @(Get-Process -Name $ProcessNames -ErrorAction SilentlyContinue)
+    if ($running.Count -eq 0) {
+        return $false
+    }
+
+    Write-MoleWarning "$AppName is running - skipped (close it and run again)"
+    Set-SectionActivity
     return $true
 }
 
@@ -77,25 +156,22 @@ function Get-PathSize {
         [Parameter(Mandatory)]
         [string]$Path
     )
-    
-    if (-not (Test-Path $Path)) {
+
+    $item = Get-SafeFileSystemItem -Path $Path
+    if ($null -eq $item) {
         return 0
     }
-    
-    try {
-        if (Test-Path $Path -PathType Container) {
-            $size = (Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue | 
-                     Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-            if ($null -eq $size) { return 0 }
-            return [long]$size
-        }
-        else {
-            return (Get-Item $Path -Force -ErrorAction SilentlyContinue).Length
-        }
+
+    if ($item -is [System.IO.FileInfo]) {
+        return [long]$item.Length
     }
-    catch {
+
+    if (Test-IsReparsePoint -Item $item) {
         return 0
     }
+
+    $tree = Get-SafeDirectoryTreeItems -Path $Path -SkipSafetyCheck
+    return Get-TreeFileSize -Items $tree.Items
 }
 
 function Get-PathSizeKB {
@@ -104,9 +180,25 @@ function Get-PathSizeKB {
         Get the size of a file or directory in kilobytes
     #>
     param([string]$Path)
-    
+
     $bytes = Get-PathSize -Path $Path
     return [Math]::Ceiling($bytes / 1024)
+}
+
+function Get-TreeFileSize {
+    <#
+    .SYNOPSIS
+        Sum file sizes from an enumerated tree, excluding links
+    #>
+    param([object[]]$Items)
+
+    $total = [long]0
+    foreach ($item in @($Items)) {
+        if ($item -is [System.IO.FileInfo] -and -not (Test-IsReparsePoint -Item $item)) {
+            $total += $item.Length
+        }
+    }
+    return $total
 }
 
 # ============================================================================
@@ -117,36 +209,68 @@ function Get-SafeDirectoryTreeItems {
     <#
     .SYNOPSIS
         Enumerate and validate every child before recursive directory removal.
+    .DESCRIPTION
+        Walks the tree without entering junctions or directory symlinks, so the
+        removal can never reach data outside the directory being cleaned.
+        Link entries are returned as items; removal unlinks them.
     #>
     param(
         [Parameter(Mandatory)]
-        [string]$Path
+        [string]$Path,
+
+        [switch]$AllowUserData,
+
+        # Size calculation only needs the listing, not the protection check.
+        [switch]$SkipSafetyCheck
     )
 
-    try {
-        $items = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction Stop)
-    }
-    catch {
-        Write-Debug "Could not enumerate directory before removal: $Path - $_"
-        return @{
-            Success = $false
-            Items   = @()
-        }
+    $failed = @{
+        Success = $false
+        Items   = @()
     }
 
-    foreach ($item in $items) {
-        if (-not (Test-SafePath -Path $item.FullName)) {
-            Write-Debug "Protected/whitelisted child rejected before recursive removal: $($item.FullName)"
-            return @{
-                Success = $false
-                Items   = @()
+    try {
+        $root = [System.IO.DirectoryInfo]::new($Path)
+        if (-not $root.Exists) {
+            return $failed
+        }
+    }
+    catch {
+        Write-Debug "Could not open directory before removal: $Path - $_"
+        return $failed
+    }
+
+    $items = [System.Collections.Generic.List[System.IO.FileSystemInfo]]::new()
+    $pending = [System.Collections.Generic.Stack[System.IO.DirectoryInfo]]::new()
+    $pending.Push($root)
+
+    while ($pending.Count -gt 0) {
+        $dir = $pending.Pop()
+        try {
+            $children = $dir.GetFileSystemInfos()
+        }
+        catch {
+            Write-Debug "Could not enumerate directory before removal: $($dir.FullName) - $_"
+            return $failed
+        }
+
+        foreach ($child in $children) {
+            if (-not $SkipSafetyCheck -and -not (Test-SafePath -Path $child.FullName -AllowUserData:$AllowUserData)) {
+                Write-Debug "Protected/whitelisted child rejected before recursive removal: $($child.FullName)"
+                return $failed
+            }
+
+            $items.Add($child)
+
+            if ($child -is [System.IO.DirectoryInfo] -and -not (Test-IsReparsePoint -Item $child)) {
+                $pending.Push($child)
             }
         }
     }
 
     return @{
         Success = $true
-        Items   = $items
+        Items   = $items.ToArray()
     }
 }
 
@@ -159,14 +283,16 @@ function Remove-SafeDirectoryTree {
         [Parameter(Mandatory)]
         [string]$Path,
 
-        [hashtable]$ValidatedTree = $null
+        [hashtable]$ValidatedTree = $null,
+
+        [switch]$AllowUserData
     )
 
     $tree = if ($null -ne $ValidatedTree) {
         $ValidatedTree
     }
     else {
-        Get-SafeDirectoryTreeItems -Path $Path
+        Get-SafeDirectoryTreeItems -Path $Path -AllowUserData:$AllowUserData
     }
 
     if (-not $tree.Success) {
@@ -175,12 +301,18 @@ function Remove-SafeDirectoryTree {
 
     $orderedItems = @()
     if ($null -ne $tree.Items) {
+        # Deepest paths first so directories are empty when their turn comes
         $orderedItems = @($tree.Items | Sort-Object { $_.FullName.Length } -Descending)
     }
 
     foreach ($item in $orderedItems) {
         try {
-            Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop
+            if (Test-IsReparsePoint -Item $item) {
+                Remove-ReparsePointLink -Item $item
+            }
+            else {
+                Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop
+            }
             Write-Debug "Removed child item: $($item.FullName)"
         }
         catch {
@@ -200,6 +332,79 @@ function Remove-SafeDirectoryTree {
     }
 }
 
+function Invoke-SafeRemoval {
+    <#
+    .SYNOPSIS
+        Validate one path and (unless dry-run) remove it
+    .OUTPUTS
+        @{ Success; Size } - Success is $true when removed or when dry-run would remove it
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [switch]$AllowUserData
+    )
+
+    $result = @{ Success = $false; Size = [long]0 }
+
+    if (-not (Test-SafePath -Path $Path -AllowUserData:$AllowUserData)) {
+        Write-Debug "Skipping protected/whitelisted path: $Path"
+        return $result
+    }
+
+    $item = Get-SafeFileSystemItem -Path $Path
+    if ($null -eq $item) {
+        Write-Debug "Path does not exist: $Path"
+        return $result
+    }
+
+    $isLink = Test-IsReparsePoint -Item $item
+    $validatedTree = $null
+
+    if ($isLink) {
+        # A link costs no space; removing it must not touch its target.
+        $size = [long]0
+    }
+    elseif ($item -is [System.IO.DirectoryInfo]) {
+        $validatedTree = Get-SafeDirectoryTreeItems -Path $item.FullName -AllowUserData:$AllowUserData
+        if (-not $validatedTree.Success) {
+            return $result
+        }
+        $size = Get-TreeFileSize -Items $validatedTree.Items
+    }
+    else {
+        $size = [long]$item.Length
+    }
+
+    $result.Size = $size
+
+    if ($script:MoleDryRunMode) {
+        $result.Success = $true
+        return $result
+    }
+
+    try {
+        if ($isLink) {
+            Remove-ReparsePointLink -Item $item
+        }
+        elseif ($null -ne $validatedTree) {
+            if (-not (Remove-SafeDirectoryTree -Path $item.FullName -ValidatedTree $validatedTree)) {
+                return $result
+            }
+        }
+        else {
+            Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop
+        }
+        $result.Success = $true
+    }
+    catch {
+        Write-Debug "Failed to remove $Path : $_"
+    }
+
+    return $result
+}
+
 function Remove-SafeItem {
     <#
     .SYNOPSIS
@@ -208,81 +413,48 @@ function Remove-SafeItem {
         This is the main safe deletion function. It:
         - Validates the path is not protected
         - Checks against whitelist
+        - Never follows junctions or symbolic links
         - Supports dry-run mode
         - Tracks cleanup statistics
     #>
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
+
         [string]$Description = "",
-        
+
         [switch]$Force,
-        
-        [switch]$Recurse
+
+        [switch]$Recurse,
+
+        # Allow paths inside personal folders (Documents, Downloads, ...) for explicit user-chosen features
+        [switch]$AllowUserData
     )
-    
-    # Validate path safety
-    if (-not (Test-SafePath -Path $Path)) {
-        Write-Debug "Skipping protected/whitelisted path: $Path"
-        return $false
-    }
-    
-    # Check if path exists
-    if (-not (Test-Path $Path)) {
-        Write-Debug "Path does not exist: $Path"
+
+    $removal = Invoke-SafeRemoval -Path $Path -AllowUserData:$AllowUserData
+    if (-not $removal.Success) {
         return $false
     }
 
-    $isDirectory = Test-Path $Path -PathType Container
-    $validatedTree = $null
-    if ($isDirectory) {
-        $validatedTree = Get-SafeDirectoryTreeItems -Path $Path
-        if (-not $validatedTree.Success) {
-            return $false
-        }
-    }
-
-    # Get size before removal
-    $size = Get-PathSize -Path $Path
+    $size = $removal.Size
     $sizeKB = [Math]::Ceiling($size / 1024)
     $sizeHuman = Format-ByteSize -Bytes $size
-    
-    # Handle dry run
+    $name = if ($Description) { $Description } else { Split-Path -Leaf $Path }
+
+    # Statistics count in dry-run too, so the preview summary shows what a real run would free
+    $script:TotalSizeCleaned += $sizeKB
+    $script:FilesCleaned++
+    $script:TotalItems++
+
     if ($script:MoleDryRunMode) {
-        $name = if ($Description) { $Description } else { Split-Path -Leaf $Path }
         Write-DryRun "$name $($script:Colors.Yellow)($sizeHuman dry)$($script:Colors.NC)"
-        Set-SectionActivity
-        return $true
     }
-    
-    # Perform removal
-    try {
-        if ($isDirectory) {
-            if (-not (Remove-SafeDirectoryTree -Path $Path -ValidatedTree $validatedTree)) {
-                return $false
-            }
-        }
-        else {
-            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
-        }
-        
-        # Update statistics
-        $script:TotalSizeCleaned += $sizeKB
-        $script:FilesCleaned++
-        $script:TotalItems++
-        
-        # Log success
-        $name = if ($Description) { $Description } else { Split-Path -Leaf $Path }
+    else {
         Write-Success "$name $($script:Colors.Green)($sizeHuman)$($script:Colors.NC)"
-        Set-SectionActivity
-        
-        return $true
     }
-    catch {
-        Write-Debug "Failed to remove $Path : $_"
-        return $false
-    }
+    Set-SectionActivity
+
+    return $true
 }
 
 function Remove-SafeItems {
@@ -293,76 +465,52 @@ function Remove-SafeItems {
     param(
         [Parameter(Mandatory)]
         [string[]]$Paths,
-        
-        [string]$Description = "Items"
+
+        [string]$Description = "Items",
+
+        [switch]$AllowUserData
     )
-    
-    $totalSize = 0
+
+    $totalSize = [long]0
     $removedCount = 0
     $failedCount = 0
-    
+
     foreach ($path in $Paths) {
-        if (-not (Test-SafePath -Path $path)) {
-            continue
-        }
-        
-        if (-not (Test-Path $path)) {
+        if (-not (Test-SafePath -Path $path -AllowUserData:$AllowUserData)) {
             continue
         }
 
-        $isDirectory = Test-Path $path -PathType Container
-        $validatedTree = $null
-        if ($isDirectory) {
-            $validatedTree = Get-SafeDirectoryTreeItems -Path $path
-            if (-not $validatedTree.Success) {
-                $failedCount++
-                continue
-            }
-        }
-        
-        $size = Get-PathSize -Path $path
-        
-        if ($script:MoleDryRunMode) {
-            $totalSize += $size
-            $removedCount++
+        if ($null -eq (Get-SafeFileSystemItem -Path $path)) {
             continue
         }
-        
-        try {
-            if ($isDirectory) {
-                if (-not (Remove-SafeDirectoryTree -Path $path -ValidatedTree $validatedTree)) {
-                    $failedCount++
-                    continue
-                }
-            }
-            else {
-                Remove-Item -LiteralPath $path -Force -ErrorAction Stop
-            }
-            $totalSize += $size
+
+        $removal = Invoke-SafeRemoval -Path $path -AllowUserData:$AllowUserData
+        if ($removal.Success) {
+            $totalSize += $removal.Size
             $removedCount++
         }
-        catch {
+        else {
             $failedCount++
-            Write-Debug "Failed to remove: $path - $_"
         }
     }
-    
+
     if ($removedCount -gt 0) {
         $sizeKB = [Math]::Ceiling($totalSize / 1024)
         $sizeHuman = Format-ByteSize -Bytes $totalSize
-        
+
+        $script:TotalSizeCleaned += $sizeKB
+        $script:FilesCleaned += $removedCount
+        $script:TotalItems++
+
         if ($script:MoleDryRunMode) {
             Write-DryRun "$Description $($script:Colors.Yellow)($removedCount items, $sizeHuman dry)$($script:Colors.NC)"
         }
         else {
-            $script:TotalSizeCleaned += $sizeKB
-            $script:FilesCleaned += $removedCount
-            $script:TotalItems++
             Write-Success "$Description $($script:Colors.Green)($removedCount items, $sizeHuman)$($script:Colors.NC)"
         }
         Set-SectionActivity
     }
-    
+
     return @{
         Removed = $removedCount
         Failed  = $failedCount
@@ -382,28 +530,30 @@ function Remove-OldFiles {
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
+
         [int]$DaysOld = 7,
-        
+
         [string]$Filter = "*",
-        
-        [string]$Description = "Old files"
+
+        [string]$Description = "Old files",
+
+        [switch]$AllowUserData
     )
-    
-    if (-not (Test-Path $Path)) {
+
+    if (-not (Test-Path -LiteralPath $Path)) {
         return @{ Removed = 0; Size = 0 }
     }
-    
+
     $cutoffDate = (Get-Date).AddDays(-$DaysOld)
-    
-    $oldFiles = Get-ChildItem -Path $Path -Filter $Filter -File -Force -ErrorAction SilentlyContinue |
+
+    $oldFiles = Get-ChildItem -LiteralPath $Path -Filter $Filter -File -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.LastWriteTime -lt $cutoffDate }
-    
+
     if ($oldFiles) {
         $paths = $oldFiles | ForEach-Object { $_.FullName }
-        return Remove-SafeItems -Paths $paths -Description "$Description (>${DaysOld}d old)"
+        return Remove-SafeItems -Paths $paths -Description "$Description (>${DaysOld}d old)" -AllowUserData:$AllowUserData
     }
-    
+
     return @{ Removed = 0; Size = 0 }
 }
 
@@ -415,35 +565,42 @@ function Remove-EmptyDirectories {
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
-        [string]$Description = "Empty directories"
+
+        [string]$Description = "Empty directories",
+
+        [switch]$AllowUserData
     )
-    
-    if (-not (Test-Path $Path)) {
+
+    if (-not (Test-Path -LiteralPath $Path)) {
         return @{ Removed = 0 }
     }
-    
+
     $removedCount = 0
     $maxIterations = 5
-    
+
     for ($i = 0; $i -lt $maxIterations; $i++) {
         # @() keeps a single empty folder an array: a lone DirectoryInfo has no
         # .Count, which Windows PowerShell 5.1 strict mode rejects.
-        $emptyDirs = @(Get-ChildItem -Path $Path -Directory -Recurse -Force -ErrorAction SilentlyContinue |
-                     Where-Object { 
-                         (Get-ChildItem -Path $_.FullName -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0
+        # Links are skipped: an "empty" junction may point at a folder that is not.
+        $tree = Get-SafeDirectoryTreeItems -Path $Path -SkipSafetyCheck
+        $emptyDirs = @($tree.Items | Where-Object {
+                         $_ -is [System.IO.DirectoryInfo] -and
+                         -not (Test-IsReparsePoint -Item $_) -and
+                         @($_.GetFileSystemInfos()).Count -eq 0
                      })
-        
-        if (-not $emptyDirs -or $emptyDirs.Count -eq 0) {
+
+        if ($emptyDirs.Count -eq 0) {
             break
         }
-        
+
+        $removedThisPass = 0
         foreach ($dir in $emptyDirs) {
-            if (Test-SafePath -Path $dir.FullName) {
+            if (Test-SafePath -Path $dir.FullName -AllowUserData:$AllowUserData) {
                 if (-not $script:MoleDryRunMode) {
                     try {
-                        Remove-Item -Path $dir.FullName -Force -ErrorAction Stop
+                        Remove-Item -LiteralPath $dir.FullName -Force -ErrorAction Stop
                         $removedCount++
+                        $removedThisPass++
                     }
                     catch {
                         Write-Debug "Could not remove empty dir: $($dir.FullName)"
@@ -454,8 +611,13 @@ function Remove-EmptyDirectories {
                 }
             }
         }
+
+        # Dry-run removes nothing, so another pass would only count the same folders again
+        if ($script:MoleDryRunMode -or $removedThisPass -eq 0) {
+            break
+        }
     }
-    
+
     if ($removedCount -gt 0) {
         if ($script:MoleDryRunMode) {
             Write-DryRun "$Description $($script:Colors.Yellow)($removedCount dirs dry)$($script:Colors.NC)"
@@ -465,7 +627,7 @@ function Remove-EmptyDirectories {
         }
         Set-SectionActivity
     }
-    
+
     return @{ Removed = $removedCount }
 }
 
@@ -477,25 +639,35 @@ function Clear-DirectoryContents {
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
-        [string]$Description = ""
+
+        [string]$Description = "",
+
+        [switch]$AllowUserData
     )
-    
-    if (-not (Test-Path $Path)) {
+
+    $directory = Get-SafeFileSystemItem -Path $Path
+    if ($null -eq $directory -or $directory -isnot [System.IO.DirectoryInfo]) {
         return @{ Removed = 0; Size = 0 }
     }
-    
-    if (-not (Test-SafePath -Path $Path)) {
+
+    # A cache folder that is itself a link points somewhere the protection
+    # rules cannot vouch for; leave it alone.
+    if (Test-IsReparsePoint -Item $directory) {
+        Write-Debug "Skipping linked directory: $Path"
         return @{ Removed = 0; Size = 0 }
     }
-    
-    $items = Get-ChildItem -Path $Path -Force -ErrorAction SilentlyContinue
+
+    if (-not (Test-SafePath -Path $Path -AllowUserData:$AllowUserData)) {
+        return @{ Removed = 0; Size = 0 }
+    }
+
+    $items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if ($items) {
         $paths = $items | ForEach-Object { $_.FullName }
         $desc = if ($Description) { $Description } else { Split-Path -Leaf $Path }
-        return Remove-SafeItems -Paths $paths -Description $desc
+        return Remove-SafeItems -Paths $paths -Description $desc -AllowUserData:$AllowUserData
     }
-    
+
     return @{ Removed = 0; Size = 0 }
 }
 

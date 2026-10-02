@@ -479,7 +479,7 @@ function Remove-ProjectArtifacts {
         foreach ($artifact in $project.Artifacts) {
             if (Test-Path $artifact.Path) {
                 # Use safe removal with protection checks (returns boolean)
-                $success = Remove-SafeItem -Path $artifact.Path -Description $artifact.Name -Recurse
+                $success = Remove-SafeItem -Path $artifact.Path -Description $artifact.Name -Recurse -AllowUserData
 
                 if ($success) {
                     Write-Host "  $esc[32m$($script:Icons.Success)$esc[0m $($artifact.Name) ($($artifact.SizeHuman))"

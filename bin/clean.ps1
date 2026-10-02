@@ -18,6 +18,10 @@ param(
     
     [Alias('w')]
     [switch]$Whitelist,
+
+    # Skip the confirmation prompt (needed for unattended runs)
+    [Alias('y')]
+    [switch]$Yes,
     
     [Alias('h')]
     [switch]$ShowHelp
@@ -65,6 +69,7 @@ function Show-CleanHelp {
     Write-Host "  --system       Include system-level cleanup (requires admin)"
     Write-Host "  --game-media   Clean old game replays, screenshots, recordings (>90d)"
     Write-Host "  --whitelist    Manage protected paths"
+    Write-Host "  --yes          Skip the confirmation prompt"
     Write-Host "  --debug        Enable debug logging"
     Write-Host "  --help         Show this help message"
     Write-Host ""
@@ -176,7 +181,8 @@ function Start-Cleanup {
     param(
         [bool]$IsDryRun,
         [bool]$IncludeSystem,
-        [bool]$IncludeGameMedia
+        [bool]$IncludeGameMedia,
+        [bool]$AssumeYes = $false
     )
 
     $esc = [char]27
@@ -226,6 +232,24 @@ function Start-Cleanup {
             Write-Host "$esc[32m$($script:Icons.Success)$esc[0m Running with Administrator privileges"
             Write-Host ""
         }
+    }
+
+    # Deletion is permanent, so never start it without an explicit yes
+    if (-not $IsDryRun -and -not $AssumeYes) {
+        if ([Console]::IsInputRedirected) {
+            Write-MoleError "No interactive console to confirm. Use --dry-run to preview or --yes to confirm."
+            return
+        }
+
+        Write-Host "$esc[33m$($script:Icons.Warning) Files will be permanently deleted (not moved to the Recycle Bin).$esc[0m"
+        Write-Host "$esc[90m  Running applications are skipped. Preview the full list first with: mo clean --dry-run$esc[0m"
+        Write-Host ""
+        if (-not (Read-Confirmation -Prompt "Start cleanup?" -Default $false)) {
+            Write-Host ""
+            Write-Host "Cancelled. Nothing was deleted."
+            return
+        }
+        Write-Host ""
     }
 
     # Show system info
@@ -311,7 +335,7 @@ function Main {
 
     # Run cleanup
     try {
-        Start-Cleanup -IsDryRun $DryRun -IncludeSystem $System -IncludeGameMedia $GameMedia
+        Start-Cleanup -IsDryRun $DryRun -IncludeSystem $System -IncludeGameMedia $GameMedia -AssumeYes $Yes
     }
     finally {
         # Cleanup temp files

@@ -122,9 +122,11 @@ function Clear-BrowserCaches {
         "$env:LOCALAPPDATA\Google\Chrome\User Data\GrShaderCache"
     )
     
-    foreach ($path in $chromeCachePaths) {
-        if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Chrome $(Split-Path -Leaf $path)"
+    if (-not (Test-SkipRunningApp -AppName "Chrome" -ProcessNames 'chrome')) {
+        foreach ($path in $chromeCachePaths) {
+            if (Test-Path $path) {
+                Clear-DirectoryContents -Path $path -Description "Chrome $(Split-Path -Leaf $path)"
+            }
         }
     }
     
@@ -137,15 +139,18 @@ function Clear-BrowserCaches {
         "$env:LOCALAPPDATA\Microsoft\Edge\User Data\ShaderCache"
     )
     
-    foreach ($path in $edgeCachePaths) {
-        if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Edge $(Split-Path -Leaf $path)"
+    # Edge often keeps background processes after its window closes (Startup boost)
+    if (-not (Test-SkipRunningApp -AppName "Edge" -ProcessNames 'msedge')) {
+        foreach ($path in $edgeCachePaths) {
+            if (Test-Path $path) {
+                Clear-DirectoryContents -Path $path -Description "Edge $(Split-Path -Leaf $path)"
+            }
         }
     }
-    
+
     # Firefox
     $firefoxProfiles = "$env:APPDATA\Mozilla\Firefox\Profiles"
-    if (Test-Path $firefoxProfiles) {
+    if ((Test-Path $firefoxProfiles) -and -not (Test-SkipRunningApp -AppName "Firefox" -ProcessNames 'firefox')) {
         $profiles = Get-ChildItem -Path $firefoxProfiles -Directory -ErrorAction SilentlyContinue
         foreach ($profile in $profiles) {
             $firefoxCachePaths = @(
@@ -163,13 +168,13 @@ function Clear-BrowserCaches {
     
     # Brave
     $braveCachePath = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Cache"
-    if (Test-Path $braveCachePath) {
+    if ((Test-Path $braveCachePath) -and -not (Test-SkipRunningApp -AppName "Brave" -ProcessNames 'brave')) {
         Clear-DirectoryContents -Path $braveCachePath -Description "Brave cache"
     }
-    
+
     # Opera
     $operaCachePath = "$env:APPDATA\Opera Software\Opera Stable\Cache"
-    if (Test-Path $operaCachePath) {
+    if ((Test-Path $operaCachePath) -and -not (Test-SkipRunningApp -AppName "Opera" -ProcessNames 'opera')) {
         Clear-DirectoryContents -Path $operaCachePath -Description "Opera cache"
     }
     
@@ -193,6 +198,7 @@ function Clear-AppCaches {
         "$env:LOCALAPPDATA\Spotify\Data"
         "$env:LOCALAPPDATA\Spotify\Storage"
     )
+    if (Test-SkipRunningApp -AppName "Spotify" -ProcessNames 'Spotify') { $spotifyCachePaths = @() }
     foreach ($path in $spotifyCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "Spotify cache"
@@ -205,6 +211,7 @@ function Clear-AppCaches {
         "$env:APPDATA\discord\Code Cache"
         "$env:APPDATA\discord\GPUCache"
     )
+    if (Test-SkipRunningApp -AppName "Discord" -ProcessNames 'Discord') { $discordCachePaths = @() }
     foreach ($path in $discordCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "Discord cache"
@@ -218,6 +225,7 @@ function Clear-AppCaches {
         "$env:APPDATA\Slack\GPUCache"
         "$env:APPDATA\Slack\Service Worker\CacheStorage"
     )
+    if (Test-SkipRunningApp -AppName "Slack" -ProcessNames 'slack') { $slackCachePaths = @() }
     foreach ($path in $slackCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "Slack cache"
@@ -234,6 +242,7 @@ function Clear-AppCaches {
         "$env:APPDATA\Microsoft\Teams\Local Storage"
         "$env:APPDATA\Microsoft\Teams\tmp"
     )
+    if (Test-SkipRunningApp -AppName "Teams" -ProcessNames 'Teams') { $teamsCachePaths = @() }
     foreach ($path in $teamsCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "Teams cache"
@@ -249,6 +258,7 @@ function Clear-AppCaches {
         "$env:APPDATA\Code\Code Cache"
         "$env:APPDATA\Code\GPUCache"
     )
+    if (Test-SkipRunningApp -AppName "VS Code" -ProcessNames 'Code') { $vscodeCachePaths = @() }
     foreach ($path in $vscodeCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "VS Code cache"
@@ -257,7 +267,7 @@ function Clear-AppCaches {
     
     # Zoom
     $zoomCachePath = "$env:APPDATA\Zoom\data"
-    if (Test-Path $zoomCachePath) {
+    if ((Test-Path $zoomCachePath) -and -not (Test-SkipRunningApp -AppName "Zoom" -ProcessNames 'Zoom')) {
         Clear-DirectoryContents -Path $zoomCachePath -Description "Zoom cache"
     }
     
@@ -278,13 +288,13 @@ function Clear-AppCaches {
     
     # Steam (download cache, not games)
     $steamCachePath = "${env:ProgramFiles(x86)}\Steam\appcache"
-    if (Test-Path $steamCachePath) {
+    if ((Test-Path $steamCachePath) -and -not (Test-SkipRunningApp -AppName "Steam" -ProcessNames 'steam')) {
         Clear-DirectoryContents -Path $steamCachePath -Description "Steam app cache"
     }
     
     # Epic Games Launcher
     $epicCachePath = "$env:LOCALAPPDATA\EpicGamesLauncher\Saved\webcache"
-    if (Test-Path $epicCachePath) {
+    if ((Test-Path $epicCachePath) -and -not (Test-SkipRunningApp -AppName "Epic Games" -ProcessNames 'EpicGamesLauncher')) {
         Clear-DirectoryContents -Path $epicCachePath -Description "Epic Games cache"
     }
     

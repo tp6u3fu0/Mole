@@ -74,7 +74,7 @@ function Clear-OldDownloads {
     
     if ($oldFiles.Count -gt 0) {
         $paths = $oldFiles | ForEach-Object { $_.FullName }
-        Remove-SafeItems -Paths $paths -Description "Old downloads (>${DaysOld}d)"
+        Remove-SafeItems -Paths $paths -Description "Old downloads (>${DaysOld}d)" -AllowUserData
     }
 }
 

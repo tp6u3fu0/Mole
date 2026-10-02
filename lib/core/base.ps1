@@ -194,11 +194,88 @@ $script:ProtectedPaths = @(
     "C:\ProgramData\Microsoft\Windows Defender"
     "$env:SYSTEMROOT"
     "$env:WINDIR"
+    # Windows may live on a drive other than C:, so also protect the resolved locations.
+    "$env:ProgramFiles"
+    "${env:ProgramFiles(x86)}"
+    "$env:ProgramW6432"
+    "$env:ProgramData\Microsoft\Windows Defender"
 )
 
 $script:ExactProtectedPaths = @(
     "$env:USERPROFILE" # Protect the user profile root without blocking targeted cache cleanup below it.
+    "$env:APPDATA"
+    "$env:LOCALAPPDATA"
+    "$env:ProgramData"
+    "$env:PUBLIC"
 )
+
+function Get-MoleUserDataPaths {
+    <#
+    .SYNOPSIS
+        Personal data folders that cleanup must never enter unless a feature opts in with -AllowUserData
+    .DESCRIPTION
+        Resolved from the shell (not hard-coded) so redirected folders, e.g. Documents moved to D:
+        or into OneDrive, are protected too.
+    #>
+    $paths = [System.Collections.Generic.List[string]]::new()
+
+    $specialFolders = @('Desktop', 'MyDocuments', 'MyPictures', 'MyVideos', 'MyMusic')
+    foreach ($folder in $specialFolders) {
+        try {
+            $resolved = [Environment]::GetFolderPath([Environment+SpecialFolder]$folder)
+            if ($resolved) { $paths.Add($resolved) }
+        }
+        catch { }
+    }
+
+    # Downloads has no SpecialFolder value; read the known-folder registry entry.
+    $downloadsGuid = '{374DE290-123F-4565-9164-39C4925E467B}'
+    try {
+        $shellFolders = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' -ErrorAction Stop
+        $downloadsProperty = $shellFolders.PSObject.Properties[$downloadsGuid]
+        if ($downloadsProperty -and $downloadsProperty.Value) {
+            $paths.Add([Environment]::ExpandEnvironmentVariables([string]$downloadsProperty.Value))
+        }
+    }
+    catch { }
+    if ($env:USERPROFILE) {
+        $paths.Add((Join-Path $env:USERPROFILE 'Downloads'))
+    }
+
+    foreach ($oneDrive in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial)) {
+        if ($oneDrive) { $paths.Add($oneDrive) }
+    }
+
+    # A folder redirected onto the profile root (or above AppData) would block every cache;
+    # the exact-path protection on those roots already covers them.
+    $appRoots = @($env:APPDATA, $env:LOCALAPPDATA) | Where-Object { $_ } | ForEach-Object {
+        try { [System.IO.Path]::GetFullPath($_).TrimEnd('\') } catch { }
+    }
+
+    $result = foreach ($path in ($paths | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        try {
+            $normalized = [System.IO.Path]::GetFullPath($path).TrimEnd('\')
+        }
+        catch {
+            continue
+        }
+
+        $containsAppRoot = $false
+        foreach ($appRoot in $appRoots) {
+            if ($appRoot -eq $normalized -or
+                $appRoot.StartsWith("$normalized\", [StringComparison]::OrdinalIgnoreCase)) {
+                $containsAppRoot = $true
+                break
+            }
+        }
+        if (-not $containsAppRoot) { $normalized }
+    }
+
+    return @($result | Select-Object -Unique)
+}
+
+$script:UserDataPaths = Get-MoleUserDataPaths
 
 # ============================================================================
 # System Utilities
@@ -293,9 +370,21 @@ function Test-ProtectedPath {
     .SYNOPSIS
         Check if a path is protected and should never be modified
     #>
-    param([string]$Path)
+    param(
+        [string]$Path,
+
+        # Let explicitly user-chosen features (purge, old downloads, game media) work
+        # inside personal folders. The personal folders themselves stay protected.
+        [switch]$AllowUserData
+    )
 
     if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $true
+    }
+
+    # Only fully qualified paths: "D:" or "Cache" would resolve against the current
+    # directory, so an empty variable in a path could aim cleanup at wherever we run from.
+    if ($Path -notmatch '^[A-Za-z]:\\' -and $Path -notmatch '^\\\\') {
         return $true
     }
 
@@ -304,6 +393,45 @@ function Test-ProtectedPath {
     }
     catch {
         return $true
+    }
+
+    # Drive roots (C:\, D:\) and UNC share roots
+    try {
+        $root = [System.IO.Path]::GetPathRoot($normalizedPath)
+        if ([string]::IsNullOrEmpty($root) -or $normalizedPath -eq $root.TrimEnd('\')) {
+            return $true
+        }
+    }
+    catch {
+        return $true
+    }
+
+    $userDataPaths = @()
+    $userDataVariable = Get-Variable -Name 'UserDataPaths' -Scope Script -ErrorAction SilentlyContinue
+    if ($userDataVariable -and $userDataVariable.Value) {
+        $userDataPaths = @($userDataVariable.Value)
+    }
+
+    foreach ($userData in $userDataPaths) {
+        if ([string]::IsNullOrWhiteSpace($userData)) {
+            continue
+        }
+
+        try {
+            $normalizedUserData = [System.IO.Path]::GetFullPath($userData).TrimEnd('\')
+        }
+        catch {
+            continue
+        }
+
+        if ($normalizedPath -eq $normalizedUserData) {
+            return $true
+        }
+
+        if (-not $AllowUserData -and
+            $normalizedPath.StartsWith("$normalizedUserData\", [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
     }
 
     foreach ($protected in $script:ExactProtectedPaths) {

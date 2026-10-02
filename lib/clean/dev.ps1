@@ -616,6 +616,7 @@ function Clear-EditorCaches {
         "$env:APPDATA\Code\GPUCache"
         "$env:LOCALAPPDATA\Microsoft\vscode-cpptools"
     )
+    if (Test-SkipRunningApp -AppName "VS Code" -ProcessNames 'Code') { $vscodeCachePaths = @() }
     foreach ($path in $vscodeCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "VS Code cache"
@@ -632,6 +633,7 @@ function Clear-EditorCaches {
         "$env:APPDATA\Code - Insiders\Code Cache"
         "$env:APPDATA\Code - Insiders\GPUCache"
     )
+    if (Test-SkipRunningApp -AppName "VS Code Insiders" -ProcessNames 'Code - Insiders') { $vscodeInsidersCachePaths = @() }
     foreach ($path in $vscodeInsidersCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "VS Code Insiders cache"
@@ -643,6 +645,7 @@ function Clear-EditorCaches {
         "$env:LOCALAPPDATA\Zed\cache"
         "$env:APPDATA\Zed\cache"
     )
+    if (Test-SkipRunningApp -AppName "Zed" -ProcessNames 'zed') { $zedCachePaths = @() }
     foreach ($path in $zedCachePaths) {
         if (Test-Path $path) {
             Clear-DirectoryContents -Path $path -Description "Zed cache"
@@ -651,13 +654,13 @@ function Clear-EditorCaches {
     
     # Sublime Text cache
     $sublimeCachePath = "$env:APPDATA\Sublime Text\Cache"
-    if (Test-Path $sublimeCachePath) {
+    if ((Test-Path $sublimeCachePath) -and -not (Test-SkipRunningApp -AppName "Sublime Text" -ProcessNames 'sublime_text')) {
         Clear-DirectoryContents -Path $sublimeCachePath -Description "Sublime Text cache"
     }
     
     # Atom cache (legacy)
     $atomCachePath = "$env:APPDATA\.atom\compile-cache"
-    if (Test-Path $atomCachePath) {
+    if ((Test-Path $atomCachePath) -and -not (Test-SkipRunningApp -AppName "Atom" -ProcessNames 'atom')) {
         Clear-DirectoryContents -Path $atomCachePath -Description "Atom compile cache"
     }
 }
@@ -677,6 +680,7 @@ function Clear-IdeCaches {
         "$env:LOCALAPPDATA\Microsoft\VisualStudio\*\ComponentModelCache"
         "$env:LOCALAPPDATA\Microsoft\VisualStudio\*\ImageCache"
     )
+    if (Test-SkipRunningApp -AppName "Visual Studio" -ProcessNames 'devenv') { $vsCachePaths = @() }
     foreach ($pattern in $vsCachePaths) {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
@@ -691,6 +695,13 @@ function Clear-IdeCaches {
         "$env:LOCALAPPDATA\JetBrains"
         "$env:APPDATA\JetBrains"
     )
+    # Index and caches are in active use while any JetBrains IDE is open
+    $jetbrainsProcesses = @(
+        'idea64', 'idea', 'pycharm64', 'pycharm', 'webstorm64', 'phpstorm64', 'rider64',
+        'clion64', 'goland64', 'datagrip64', 'rubymine64', 'dataspell64', 'rustrover64',
+        'aqua64', 'writerside64', 'fleet'
+    )
+    if (Test-SkipRunningApp -AppName "JetBrains IDE" -ProcessNames $jetbrainsProcesses) { $jetbrainsBasePaths = @() }
     foreach ($basePath in $jetbrainsBasePaths) {
         if (Test-Path $basePath) {
             $ideFolders = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue
