@@ -30,13 +30,13 @@ function Clear-UserTempFiles {
     # User temp directory
     $userTemp = $env:TEMP
     if (Test-Path $userTemp) {
-        Remove-OldFiles -Path $userTemp -DaysOld $DaysOld -Description "User temp files"
+        $null = Remove-OldFiles -Path $userTemp -DaysOld $DaysOld -Description "User temp files"
     }
     
     # Windows Temp (if accessible)
     $winTemp = "$env:WINDIR\Temp"
     if ((Test-Path $winTemp) -and (Test-IsAdmin)) {
-        Remove-OldFiles -Path $winTemp -DaysOld $DaysOld -Description "Windows temp files"
+        $null = Remove-OldFiles -Path $winTemp -DaysOld $DaysOld -Description "Windows temp files"
     }
     
     Stop-Section
@@ -74,7 +74,7 @@ function Clear-OldDownloads {
     
     if ($oldFiles.Count -gt 0) {
         $paths = $oldFiles | ForEach-Object { $_.FullName }
-        Remove-SafeItems -Paths $paths -Description "Old downloads (>${DaysOld}d)" -AllowUserData
+        $null = Remove-SafeItems -Paths $paths -Description "Old downloads (>${DaysOld}d)" -AllowUserData
     }
 }
 
@@ -134,13 +134,13 @@ function Clear-RecentFiles {
     $recentPath = "$env:APPDATA\Microsoft\Windows\Recent"
     
     if (Test-Path $recentPath) {
-        Remove-OldFiles -Path $recentPath -DaysOld $DaysOld -Filter "*.lnk" -Description "Old recent shortcuts"
+        $null = Remove-OldFiles -Path $recentPath -DaysOld $DaysOld -Filter "*.lnk" -Description "Old recent shortcuts"
     }
     
     # AutomaticDestinations (jump lists)
     $autoDestPath = "$recentPath\AutomaticDestinations"
     if (Test-Path $autoDestPath) {
-        Remove-OldFiles -Path $autoDestPath -DaysOld $DaysOld -Description "Old jump list entries"
+        $null = Remove-OldFiles -Path $autoDestPath -DaysOld $DaysOld -Description "Old jump list entries"
     }
 }
 
@@ -165,13 +165,13 @@ function Clear-ThumbnailCache {
     
     if ($thumbFiles) {
         $paths = $thumbFiles | ForEach-Object { $_.FullName }
-        Remove-SafeItems -Paths $paths -Description "Thumbnail cache"
+        $null = Remove-SafeItems -Paths $paths -Description "Thumbnail cache"
     }
     
     # Icon cache
     $iconCache = "$env:LOCALAPPDATA\IconCache.db"
     if (Test-Path $iconCache) {
-        Remove-SafeItem -Path $iconCache -Description "Icon cache"
+        $null = Remove-SafeItem -Path $iconCache -Description "Icon cache"
     }
 }
 
@@ -186,34 +186,32 @@ function Clear-ErrorReports {
     #>
     param([int]$DaysOld = 7)
     
+    $cutoffDate = (Get-Date).AddDays(-$DaysOld)
+
+    # Files only: listing folders too would count every file twice (folder size + file)
     $werPaths = @(
         "$env:LOCALAPPDATA\Microsoft\Windows\WER"
         "$env:LOCALAPPDATA\CrashDumps"
-        "$env:USERPROFILE\AppData\Local\Microsoft\Windows\WER"
     )
-    
-    foreach ($path in $werPaths) {
-        if (Test-Path $path) {
-            $items = Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            if ($items) {
-                $paths = $items | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Error reports"
-            }
+
+    $reportFiles = foreach ($path in $werPaths) {
+        if (Test-Path -LiteralPath $path) {
+            Get-ChildItem -LiteralPath $path -Recurse -File -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+                ForEach-Object { $_.FullName }
         }
     }
-    
-    # Memory dumps
-    $dumpPaths = @(
-        "$env:LOCALAPPDATA\CrashDumps"
-        "$env:USERPROFILE\*.dmp"
-    )
-    
-    foreach ($path in $dumpPaths) {
-        $dumps = Get-ChildItem -Path $path -Filter "*.dmp" -ErrorAction SilentlyContinue
-        if ($dumps) {
-            $paths = $dumps | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Memory dumps"
-        }
+    $reportFiles = @($reportFiles | Select-Object -Unique)
+    if ($reportFiles.Count -gt 0) {
+        $null = Remove-SafeItems -Paths $reportFiles -Description "Error reports (>${DaysOld}d old)"
+    }
+
+    # Memory dumps left in the profile root (CrashDumps is covered above)
+    $dumps = @(Get-ChildItem -LiteralPath $env:USERPROFILE -Filter "*.dmp" -File -Force -ErrorAction SilentlyContinue |
+               Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+               ForEach-Object { $_.FullName })
+    if ($dumps.Count -gt 0) {
+        $null = Remove-SafeItems -Paths $dumps -Description "Memory dumps (>${DaysOld}d old)"
     }
 }
 
@@ -236,7 +234,7 @@ function Clear-Prefetch {
     $prefetchPath = "$env:WINDIR\Prefetch"
     
     if (Test-Path $prefetchPath) {
-        Remove-OldFiles -Path $prefetchPath -DaysOld $DaysOld -Description "Prefetch files"
+        $null = Remove-OldFiles -Path $prefetchPath -DaysOld $DaysOld -Description "Prefetch files"
     }
 }
 
@@ -267,7 +265,7 @@ function Clear-UserLogs {
             
             if ($logs) {
                 $paths = $logs | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Old log files"
+                $null = Remove-SafeItems -Paths $paths -Description "Old log files"
             }
         }
     }
@@ -298,7 +296,7 @@ function Clear-ClipboardHistory {
         # Clear clipboard history (Windows 10 1809+)
         $clipboardPath = "$env:LOCALAPPDATA\Microsoft\Windows\Clipboard"
         if (Test-Path $clipboardPath) {
-            Clear-DirectoryContents -Path $clipboardPath -Description "Clipboard history"
+            $null = Clear-DirectoryContents -Path $clipboardPath -Description "Clipboard history"
         }
     }
     catch {

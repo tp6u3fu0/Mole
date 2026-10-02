@@ -539,7 +539,7 @@ function Uninstall-SelectedApps {
             # Clean leftover files
             if ($app.InstallLocation -and (Test-Path $app.InstallLocation)) {
                 Write-Host "  $esc[90mCleaning leftover files...$esc[0m"
-                Remove-SafeItem -Path $app.InstallLocation -Description "Leftover files" -Recurse
+                $null = Remove-SafeItem -Path $app.InstallLocation -Description "Leftover files" -Recurse
             }
         }
         catch {

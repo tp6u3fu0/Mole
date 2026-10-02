@@ -155,7 +155,7 @@ function Clear-OrphanedAppData {
         
         foreach ($orphan in $significantOrphans) {
             $orphanSize = Format-ByteSize -Bytes $orphan.Size
-            Remove-SafeItem -Path $orphan.Path -Description "$($orphan.Name) ($orphanSize)" -Recurse
+            $null = Remove-SafeItem -Path $orphan.Path -Description "$($orphan.Name) ($orphanSize)" -Recurse
         }
     }
     
@@ -194,12 +194,12 @@ function Clear-OfficeCache {
                 $tmpFiles = Get-ChildItem -Path $parent -Filter "*.tmp" -File -ErrorAction SilentlyContinue
                 if ($tmpFiles) {
                     $paths = $tmpFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "Office temp files"
+                    $null = Remove-SafeItems -Paths $paths -Description "Office temp files"
                 }
             }
         }
         elseif (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Office $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "Office $(Split-Path -Leaf $path)"
         }
     }
 }
@@ -217,7 +217,7 @@ function Clear-OneDriveCache {
     
     foreach ($path in $oneDriveCachePaths) {
         if (Test-Path $path) {
-            Remove-OldFiles -Path $path -DaysOld 7 -Description "OneDrive logs"
+            $null = Remove-OldFiles -Path $path -DaysOld 7 -Description "OneDrive logs"
         }
     }
 }
@@ -239,7 +239,7 @@ function Clear-DropboxCache {
             if ($dropboxPath) {
                 $dropboxCachePath = "$dropboxPath\.dropbox.cache"
                 if (Test-Path $dropboxCachePath) {
-                    Clear-DirectoryContents -Path $dropboxCachePath -Description "Dropbox cache"
+                    $null = Clear-DirectoryContents -Path $dropboxCachePath -Description "Dropbox cache"
                 }
             }
         }
@@ -267,12 +267,12 @@ function Clear-GoogleDriveCache {
                 $tmpFiles = Get-ChildItem -Path $parent -Filter "*.tmp" -ErrorAction SilentlyContinue
                 if ($tmpFiles) {
                     $paths = $tmpFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "Google Drive temp"
+                    $null = Remove-SafeItems -Paths $paths -Description "Google Drive temp"
                 }
             }
         }
         elseif (Test-Path $path) {
-            Remove-OldFiles -Path $path -DaysOld 7 -Description "Google Drive logs"
+            $null = Remove-OldFiles -Path $path -DaysOld 7 -Description "Google Drive logs"
         }
     }
 }
@@ -296,7 +296,7 @@ function Clear-AdobeData {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
             if (Test-Path $path.Path) {
-                Clear-DirectoryContents -Path $path.Path -Description "Adobe cache"
+                $null = Clear-DirectoryContents -Path $path.Path -Description "Adobe cache"
             }
         }
     }
@@ -317,7 +317,7 @@ function Clear-AutodeskData {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
             if (Test-Path $path.Path) {
-                Clear-DirectoryContents -Path $path.Path -Description "Autodesk cache"
+                $null = Clear-DirectoryContents -Path $path.Path -Description "Autodesk cache"
             }
         }
     }
@@ -341,7 +341,7 @@ function Clear-GamingPlatformCaches {
     )
     foreach ($path in $steamPaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Steam $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "Steam $(Split-Path -Leaf $path)"
         }
     }
     
@@ -352,7 +352,7 @@ function Clear-GamingPlatformCaches {
     )
     foreach ($path in $epicPaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Epic Games $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "Epic Games $(Split-Path -Leaf $path)"
         }
     }
     
@@ -365,7 +365,7 @@ function Clear-GamingPlatformCaches {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
             if (Test-Path $path.Path) {
-                Clear-DirectoryContents -Path $path.Path -Description "EA/Origin cache"
+                $null = Clear-DirectoryContents -Path $path.Path -Description "EA/Origin cache"
             }
         }
     }
@@ -377,7 +377,7 @@ function Clear-GamingPlatformCaches {
     )
     foreach ($path in $gogPaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "GOG Galaxy $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "GOG Galaxy $(Split-Path -Leaf $path)"
         }
     }
     
@@ -388,7 +388,7 @@ function Clear-GamingPlatformCaches {
     )
     foreach ($path in $ubiPaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Ubisoft $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "Ubisoft $(Split-Path -Leaf $path)"
         }
     }
     
@@ -399,7 +399,7 @@ function Clear-GamingPlatformCaches {
     )
     foreach ($path in $battlenetPaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Battle.net $(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "Battle.net $(Split-Path -Leaf $path)"
         }
     }
 }
@@ -453,7 +453,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "NVIDIA recordings (>${DaysOld}d)" -AllowUserData
+                    $null = Remove-SafeItems -Paths $paths -Description "NVIDIA recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -466,7 +466,7 @@ function Clear-GameMediaFiles {
                          Where-Object { $_.LastWriteTime -lt $cutoffDate -and $_.Extension -match '\.(mp4|mkv|avi|mov)$' }
         if ($oldHighlights) {
             $paths = $oldHighlights | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "NVIDIA Highlights (>${DaysOld}d)" -AllowUserData
+            $null = Remove-SafeItems -Paths $paths -Description "NVIDIA Highlights (>${DaysOld}d)" -AllowUserData
         }
     }
     
@@ -486,7 +486,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "AMD ReLive recordings (>${DaysOld}d)" -AllowUserData
+                    $null = Remove-SafeItems -Paths $paths -Description "AMD ReLive recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -502,7 +502,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Xbox Game Bar captures (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Xbox Game Bar captures (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -517,7 +517,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Windows screenshots (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Windows screenshots (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -532,7 +532,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Windows screen recordings (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Windows screen recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -552,7 +552,7 @@ function Clear-GameMediaFiles {
                               Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldScreenshots) {
                 $paths = $oldScreenshots | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Steam screenshots (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Steam screenshots (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -564,7 +564,7 @@ function Clear-GameMediaFiles {
                     Where-Object { $_.LastWriteTime -lt $cutoffDate }
         if ($oldFiles) {
             $paths = $oldFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Steam exported screenshots (>${DaysOld}d)" -AllowUserData
+            $null = Remove-SafeItems -Paths $paths -Description "Steam exported screenshots (>${DaysOld}d)" -AllowUserData
         }
     }
     
@@ -578,7 +578,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "OBS recordings (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "OBS recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -594,7 +594,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate -and $_.Extension -match '\.(mp4|png)$' }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Game DVR recordings (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Game DVR recordings (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -609,7 +609,7 @@ function Clear-GameMediaFiles {
                         Where-Object { $_.LastWriteTime -lt $cutoffDate }
             if ($oldFiles) {
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Medal.tv clips (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "Medal.tv clips (>${DaysOld}d)" -AllowUserData
             }
         }
     }
@@ -628,7 +628,7 @@ function Clear-GameMediaFiles {
                             Where-Object { $_.LastWriteTime -lt $cutoffDate }
                 if ($oldFiles) {
                     $paths = $oldFiles | ForEach-Object { $_.FullName }
-                    Remove-SafeItems -Paths $paths -Description "Overwolf/Outplayed recordings (>${DaysOld}d)" -AllowUserData
+                    $null = Remove-SafeItems -Paths $paths -Description "Overwolf/Outplayed recordings (>${DaysOld}d)" -AllowUserData
                 }
             }
         }
@@ -659,7 +659,7 @@ function Clear-GameMediaFiles {
             if ($oldFiles) {
                 $gameName = (Split-Path (Split-Path $path -Parent) -Leaf)
                 $paths = $oldFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "$gameName replays (>${DaysOld}d)" -AllowUserData
+                $null = Remove-SafeItems -Paths $paths -Description "$gameName replays (>${DaysOld}d)" -AllowUserData
             }
         }
     }

@@ -44,7 +44,7 @@ function Clear-NpmCache {
     # npm cache directory (fallback)
     $npmCachePath = "$env:APPDATA\npm-cache"
     if (Test-Path $npmCachePath) {
-        Clear-DirectoryContents -Path $npmCachePath -Description "npm cache directory"
+        $null = Clear-DirectoryContents -Path $npmCachePath -Description "npm cache directory"
     }
     
     # pnpm store
@@ -74,14 +74,14 @@ function Clear-NpmCache {
     )
     foreach ($path in $yarnCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Yarn cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Yarn cache"
         }
     }
     
     # Bun cache
     $bunCachePath = "$env:USERPROFILE\.bun\install\cache"
     if (Test-Path $bunCachePath) {
-        Clear-DirectoryContents -Path $bunCachePath -Description "Bun cache"
+        $null = Clear-DirectoryContents -Path $bunCachePath -Description "Bun cache"
     }
 }
 
@@ -94,19 +94,19 @@ function Clear-NodeBuildCaches {
     # node-gyp
     $nodeGypPath = "$env:LOCALAPPDATA\node-gyp\Cache"
     if (Test-Path $nodeGypPath) {
-        Clear-DirectoryContents -Path $nodeGypPath -Description "node-gyp cache"
+        $null = Clear-DirectoryContents -Path $nodeGypPath -Description "node-gyp cache"
     }
     
     # Electron cache
     $electronCachePath = "$env:LOCALAPPDATA\electron\Cache"
     if (Test-Path $electronCachePath) {
-        Clear-DirectoryContents -Path $electronCachePath -Description "Electron cache"
+        $null = Clear-DirectoryContents -Path $electronCachePath -Description "Electron cache"
     }
     
     # TypeScript cache
     $tsCachePath = "$env:LOCALAPPDATA\TypeScript"
     if (Test-Path $tsCachePath) {
-        Clear-DirectoryContents -Path $tsCachePath -Description "TypeScript cache"
+        $null = Clear-DirectoryContents -Path $tsCachePath -Description "TypeScript cache"
     }
 }
 
@@ -140,7 +140,7 @@ function Clear-PythonCaches {
     # pip cache directory
     $pipCachePath = "$env:LOCALAPPDATA\pip\Cache"
     if (Test-Path $pipCachePath) {
-        Clear-DirectoryContents -Path $pipCachePath -Description "pip cache directory"
+        $null = Clear-DirectoryContents -Path $pipCachePath -Description "pip cache directory"
     }
     
     # Python bytecode caches (__pycache__)
@@ -149,13 +149,13 @@ function Clear-PythonCaches {
     # pyenv cache
     $pyenvCachePath = "$env:USERPROFILE\.pyenv\cache"
     if (Test-Path $pyenvCachePath) {
-        Clear-DirectoryContents -Path $pyenvCachePath -Description "pyenv cache"
+        $null = Clear-DirectoryContents -Path $pyenvCachePath -Description "pyenv cache"
     }
     
     # Poetry cache
     $poetryCachePath = "$env:LOCALAPPDATA\pypoetry\Cache"
     if (Test-Path $poetryCachePath) {
-        Clear-DirectoryContents -Path $poetryCachePath -Description "Poetry cache"
+        $null = Clear-DirectoryContents -Path $poetryCachePath -Description "Poetry cache"
     }
     
     # conda packages
@@ -170,7 +170,7 @@ function Clear-PythonCaches {
             $tempFiles = Get-ChildItem -Path $path -Filter "*.tmp" -ErrorAction SilentlyContinue
             if ($tempFiles) {
                 $paths = $tempFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Conda temp files"
+                $null = Remove-SafeItems -Paths $paths -Description "Conda temp files"
             }
         }
     }
@@ -178,13 +178,13 @@ function Clear-PythonCaches {
     # Jupyter runtime
     $jupyterRuntimePath = "$env:APPDATA\jupyter\runtime"
     if (Test-Path $jupyterRuntimePath) {
-        Clear-DirectoryContents -Path $jupyterRuntimePath -Description "Jupyter runtime"
+        $null = Clear-DirectoryContents -Path $jupyterRuntimePath -Description "Jupyter runtime"
     }
     
     # pytest cache
     $pytestCachePath = "$env:USERPROFILE\.pytest_cache"
     if (Test-Path $pytestCachePath) {
-        Remove-SafeItem -Path $pytestCachePath -Description "pytest cache" -Recurse
+        $null = Remove-SafeItem -Path $pytestCachePath -Description "pytest cache" -Recurse
     }
 }
 
@@ -205,12 +205,12 @@ function Clear-DotNetDevCaches {
     
     $nugetHttpCache = "$env:LOCALAPPDATA\NuGet\v3-cache"
     if (Test-Path $nugetHttpCache) {
-        Clear-DirectoryContents -Path $nugetHttpCache -Description "NuGet HTTP cache"
+        $null = Clear-DirectoryContents -Path $nugetHttpCache -Description "NuGet HTTP cache"
     }
     
     $nugetTempPath = "$env:LOCALAPPDATA\NuGet\plugins-cache"
     if (Test-Path $nugetTempPath) {
-        Clear-DirectoryContents -Path $nugetTempPath -Description "NuGet plugins cache"
+        $null = Clear-DirectoryContents -Path $nugetTempPath -Description "NuGet plugins cache"
     }
     
     # MSBuild temp files
@@ -218,7 +218,7 @@ function Clear-DotNetDevCaches {
     if (Test-Path $msbuildTemp) {
         $tempDirs = Get-ChildItem -Path $msbuildTemp -Directory -Filter "*temp*" -ErrorAction SilentlyContinue
         foreach ($dir in $tempDirs) {
-            Clear-DirectoryContents -Path $dir.FullName -Description "MSBuild temp"
+            $null = Clear-DirectoryContents -Path $dir.FullName -Description "MSBuild temp"
         }
     }
 }
@@ -255,7 +255,7 @@ function Clear-GoCaches {
         $goModCachePath = "$env:USERPROFILE\go\pkg\mod\cache"
     }
     if (Test-Path $goModCachePath) {
-        Clear-DirectoryContents -Path $goModCachePath -Description "Go module cache"
+        $null = Clear-DirectoryContents -Path $goModCachePath -Description "Go module cache"
     }
 }
 
@@ -313,7 +313,7 @@ function Clear-MiseCache {
     }
 
     if (-not $clearedByCommand -and $cachePath -and (Test-Path $cachePath)) {
-        Clear-DirectoryContents -Path $cachePath -Description "mise cache"
+        $null = Clear-DirectoryContents -Path $cachePath -Description "mise cache"
     }
 }
 
@@ -330,19 +330,19 @@ function Clear-RustCaches {
     # Cargo registry cache
     $cargoRegistryCache = "$env:USERPROFILE\.cargo\registry\cache"
     if (Test-Path $cargoRegistryCache) {
-        Clear-DirectoryContents -Path $cargoRegistryCache -Description "Cargo registry cache"
+        $null = Clear-DirectoryContents -Path $cargoRegistryCache -Description "Cargo registry cache"
     }
     
     # Cargo git cache
     $cargoGitCache = "$env:USERPROFILE\.cargo\git\checkouts"
     if (Test-Path $cargoGitCache) {
-        Clear-DirectoryContents -Path $cargoGitCache -Description "Cargo git cache"
+        $null = Clear-DirectoryContents -Path $cargoGitCache -Description "Cargo git cache"
     }
     
     # Rustup downloads
     $rustupDownloads = "$env:USERPROFILE\.rustup\downloads"
     if (Test-Path $rustupDownloads) {
-        Clear-DirectoryContents -Path $rustupDownloads -Description "Rustup downloads"
+        $null = Clear-DirectoryContents -Path $rustupDownloads -Description "Rustup downloads"
     }
 }
 
@@ -368,7 +368,7 @@ function Clear-JvmCaches {
             $tempFiles = Get-ChildItem -Path $path -Recurse -Filter "*.lock" -ErrorAction SilentlyContinue
             if ($tempFiles) {
                 $paths = $tempFiles | ForEach-Object { $_.FullName }
-                Remove-SafeItems -Paths $paths -Description "Gradle lock files"
+                $null = Remove-SafeItems -Paths $paths -Description "Gradle lock files"
             }
         }
     }
@@ -379,7 +379,7 @@ function Clear-JvmCaches {
         $tempFiles = Get-ChildItem -Path $mavenRepoPath -Recurse -Filter "*.lastUpdated" -ErrorAction SilentlyContinue
         if ($tempFiles) {
             $paths = $tempFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Maven update markers"
+            $null = Remove-SafeItems -Paths $paths -Description "Maven update markers"
         }
     }
 }
@@ -442,31 +442,31 @@ function Clear-CloudCliCaches {
     # AWS CLI cache
     $awsCachePath = "$env:USERPROFILE\.aws\cli\cache"
     if (Test-Path $awsCachePath) {
-        Clear-DirectoryContents -Path $awsCachePath -Description "AWS CLI cache"
+        $null = Clear-DirectoryContents -Path $awsCachePath -Description "AWS CLI cache"
     }
     
     # Azure CLI logs
     $azureLogsPath = "$env:USERPROFILE\.azure\logs"
     if (Test-Path $azureLogsPath) {
-        Clear-DirectoryContents -Path $azureLogsPath -Description "Azure CLI logs"
+        $null = Clear-DirectoryContents -Path $azureLogsPath -Description "Azure CLI logs"
     }
     
     # Google Cloud logs
     $gcloudLogsPath = "$env:APPDATA\gcloud\logs"
     if (Test-Path $gcloudLogsPath) {
-        Clear-DirectoryContents -Path $gcloudLogsPath -Description "gcloud logs"
+        $null = Clear-DirectoryContents -Path $gcloudLogsPath -Description "gcloud logs"
     }
     
     # Kubernetes cache
     $kubeCachePath = "$env:USERPROFILE\.kube\cache"
     if (Test-Path $kubeCachePath) {
-        Clear-DirectoryContents -Path $kubeCachePath -Description "Kubernetes cache"
+        $null = Clear-DirectoryContents -Path $kubeCachePath -Description "Kubernetes cache"
     }
     
     # Terraform plugin cache
     $terraformCachePath = "$env:APPDATA\terraform.d\plugin-cache"
     if (Test-Path $terraformCachePath) {
-        Clear-DirectoryContents -Path $terraformCachePath -Description "Terraform plugin cache"
+        $null = Clear-DirectoryContents -Path $terraformCachePath -Description "Terraform plugin cache"
     }
 }
 
@@ -491,7 +491,7 @@ function Clear-ElixirCaches {
     # Hex cache
     $hexCachePath = "$env:USERPROFILE\.hex\cache"
     if (Test-Path $hexCachePath) {
-        Clear-DirectoryContents -Path $hexCachePath -Description "Hex cache"
+        $null = Clear-DirectoryContents -Path $hexCachePath -Description "Hex cache"
     }
     
     # Hex packages - use age-based cleanup to preserve actively used packages
@@ -502,7 +502,7 @@ function Clear-ElixirCaches {
             Where-Object { $_.LastWriteTime -lt $cutoffDate }
         if ($oldHexPackages) {
             foreach ($pkg in $oldHexPackages) {
-                Remove-SafeItem -Path $pkg.FullName -Description "Old Hex package ($($pkg.Name))" -Recurse
+                $null = Remove-SafeItem -Path $pkg.FullName -Description "Old Hex package ($($pkg.Name))" -Recurse
             }
         }
     }
@@ -526,7 +526,7 @@ function Clear-HaskellCaches {
             Where-Object { $_.LastWriteTime -lt $cutoffDate }
         if ($oldCacheItems) {
             $paths = $oldCacheItems | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Cabal old packages cache"
+            $null = Remove-SafeItems -Paths $paths -Description "Cabal old packages cache"
         }
     }
     
@@ -538,7 +538,7 @@ function Clear-HaskellCaches {
                    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) }
         if ($oldDirs) {
             foreach ($dir in $oldDirs) {
-                Remove-SafeItem -Path $dir.FullName -Description "Cabal old store ($($dir.Name))" -Recurse
+                $null = Remove-SafeItem -Path $dir.FullName -Description "Cabal old store ($($dir.Name))" -Recurse
             }
         }
     }
@@ -552,7 +552,7 @@ function Clear-HaskellCaches {
             Where-Object { $_.LastWriteTime -lt $cutoffDate }
         if ($oldProgramDirs) {
             foreach ($dir in $oldProgramDirs) {
-                Remove-SafeItem -Path $dir.FullName -Description "Stack old program ($($dir.Name))" -Recurse
+                $null = Remove-SafeItem -Path $dir.FullName -Description "Stack old program ($($dir.Name))" -Recurse
             }
         }
     }
@@ -564,7 +564,7 @@ function Clear-HaskellCaches {
         $tempFiles = Get-ChildItem -Path $stackSnapshotsPath -Recurse -Filter "*.tmp" -ErrorAction SilentlyContinue
         if ($tempFiles) {
             $paths = $tempFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Stack temp files"
+            $null = Remove-SafeItems -Paths $paths -Description "Stack temp files"
         }
     }
 }
@@ -582,7 +582,7 @@ function Clear-OCamlCaches {
     # Opam download cache
     $opamDownloadCache = "$env:USERPROFILE\.opam\download-cache"
     if (Test-Path $opamDownloadCache) {
-        Clear-DirectoryContents -Path $opamDownloadCache -Description "Opam download cache"
+        $null = Clear-DirectoryContents -Path $opamDownloadCache -Description "Opam download cache"
     }
     
     # Opam repo cache
@@ -590,7 +590,7 @@ function Clear-OCamlCaches {
     if (Test-Path $opamRepoCache) {
         $cacheDirs = Get-ChildItem -Path $opamRepoCache -Directory -Filter "*cache*" -ErrorAction SilentlyContinue
         foreach ($dir in $cacheDirs) {
-            Clear-DirectoryContents -Path $dir.FullName -Description "Opam repo cache"
+            $null = Clear-DirectoryContents -Path $dir.FullName -Description "Opam repo cache"
         }
     }
 }
@@ -619,7 +619,7 @@ function Clear-EditorCaches {
     if (Test-SkipRunningApp -AppName "VS Code" -ProcessNames 'Code') { $vscodeCachePaths = @() }
     foreach ($path in $vscodeCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "VS Code cache"
+            $null = Clear-DirectoryContents -Path $path -Description "VS Code cache"
         }
     }
     
@@ -636,7 +636,7 @@ function Clear-EditorCaches {
     if (Test-SkipRunningApp -AppName "VS Code Insiders" -ProcessNames 'Code - Insiders') { $vscodeInsidersCachePaths = @() }
     foreach ($path in $vscodeInsidersCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "VS Code Insiders cache"
+            $null = Clear-DirectoryContents -Path $path -Description "VS Code Insiders cache"
         }
     }
     
@@ -648,20 +648,20 @@ function Clear-EditorCaches {
     if (Test-SkipRunningApp -AppName "Zed" -ProcessNames 'zed') { $zedCachePaths = @() }
     foreach ($path in $zedCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Zed cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Zed cache"
         }
     }
     
     # Sublime Text cache
     $sublimeCachePath = "$env:APPDATA\Sublime Text\Cache"
     if ((Test-Path $sublimeCachePath) -and -not (Test-SkipRunningApp -AppName "Sublime Text" -ProcessNames 'sublime_text')) {
-        Clear-DirectoryContents -Path $sublimeCachePath -Description "Sublime Text cache"
+        $null = Clear-DirectoryContents -Path $sublimeCachePath -Description "Sublime Text cache"
     }
     
     # Atom cache (legacy)
     $atomCachePath = "$env:APPDATA\.atom\compile-cache"
     if ((Test-Path $atomCachePath) -and -not (Test-SkipRunningApp -AppName "Atom" -ProcessNames 'atom')) {
-        Clear-DirectoryContents -Path $atomCachePath -Description "Atom compile cache"
+        $null = Clear-DirectoryContents -Path $atomCachePath -Description "Atom compile cache"
     }
 }
 
@@ -685,7 +685,7 @@ function Clear-IdeCaches {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
             if (Test-Path $path.Path) {
-                Clear-DirectoryContents -Path $path.Path -Description "Visual Studio cache"
+                $null = Clear-DirectoryContents -Path $path.Path -Description "Visual Studio cache"
             }
         }
     }
@@ -710,7 +710,7 @@ function Clear-IdeCaches {
                 foreach ($cacheFolder in $cacheFolders) {
                     $cachePath = Join-Path $ideFolder.FullName $cacheFolder
                     if (Test-Path $cachePath) {
-                        Clear-DirectoryContents -Path $cachePath -Description "$($ideFolder.Name) $cacheFolder"
+                        $null = Clear-DirectoryContents -Path $cachePath -Description "$($ideFolder.Name) $cacheFolder"
                     }
                 }
             }
@@ -731,7 +731,7 @@ function Clear-GitCaches {
     # Git config locks (stale)
     $gitConfigLock = "$env:USERPROFILE\.gitconfig.lock"
     if (Test-Path $gitConfigLock) {
-        Remove-SafeItem -Path $gitConfigLock -Description "Git config lock"
+        $null = Remove-SafeItem -Path $gitConfigLock -Description "Git config lock"
     }
     
     # GitHub CLI cache
@@ -741,7 +741,7 @@ function Clear-GitCaches {
                       Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) }
         if ($cacheFiles) {
             $paths = $cacheFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "GitHub CLI cache"
+            $null = Remove-SafeItems -Paths $paths -Description "GitHub CLI cache"
         }
     }
 }

@@ -32,13 +32,13 @@ function Clear-SystemTempFiles {
     # Windows Temp folder
     $winTemp = "$env:WINDIR\Temp"
     if (Test-Path $winTemp) {
-        Remove-OldFiles -Path $winTemp -DaysOld 7 -Description "Windows temp files"
+        $null = Remove-OldFiles -Path $winTemp -DaysOld 7 -Description "Windows temp files"
     }
 
     # System temp (different from Windows temp)
     $systemTemp = "$env:SYSTEMROOT\Temp"
     if ((Test-Path $systemTemp) -and ($systemTemp -ne $winTemp)) {
-        Remove-OldFiles -Path $systemTemp -DaysOld 7 -Description "System temp files"
+        $null = Remove-OldFiles -Path $systemTemp -DaysOld 7 -Description "System temp files"
     }
 }
 
@@ -74,7 +74,7 @@ function Clear-WindowsLogs {
 
     foreach ($path in $logPaths) {
         if (Test-Path $path) {
-            Remove-OldFiles -Path $path -DaysOld $DaysOld -Description "$(Split-Path -Leaf $path) logs"
+            $null = Remove-OldFiles -Path $path -DaysOld $DaysOld -Description "$(Split-Path -Leaf $path) logs"
         }
     }
 
@@ -83,7 +83,7 @@ function Clear-WindowsLogs {
                  Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$DaysOld) }
     if ($setupLogs) {
         $paths = $setupLogs | ForEach-Object { $_.FullName }
-        Remove-SafeItems -Paths $paths -Description "Windows setup logs"
+        $null = Remove-SafeItems -Paths $paths -Description "Windows setup logs"
     }
 }
 
@@ -125,14 +125,14 @@ function Clear-WindowsUpdateFiles {
         # Clean download cache
         $wuDownloadPath = "$env:WINDIR\SoftwareDistribution\Download"
         if (Test-Path $wuDownloadPath) {
-            Clear-DirectoryContents -Path $wuDownloadPath -Description "Windows Update download cache"
+            $null = Clear-DirectoryContents -Path $wuDownloadPath -Description "Windows Update download cache"
         }
 
         # Clean DataStore (old update history - be careful!)
         # Only clean temp files, not the actual database
         $wuDataStore = "$env:WINDIR\SoftwareDistribution\DataStore\Logs"
         if (Test-Path $wuDataStore) {
-            Clear-DirectoryContents -Path $wuDataStore -Description "Windows Update logs"
+            $null = Clear-DirectoryContents -Path $wuDataStore -Description "Windows Update logs"
         }
     }
     finally {
@@ -166,7 +166,7 @@ function Clear-InstallerCache {
         $tmpFiles = Get-ChildItem -Path $installerPath -Filter "*.tmp" -File -ErrorAction SilentlyContinue
         if ($tmpFiles) {
             $paths = $tmpFiles | ForEach-Object { $_.FullName }
-            Remove-SafeItems -Paths $paths -Description "Installer temp files"
+            $null = Remove-SafeItems -Paths $paths -Description "Installer temp files"
         }
     }
 
@@ -175,7 +175,7 @@ function Clear-InstallerCache {
                      Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) }
     if ($installerLogs) {
         $paths = $installerLogs | ForEach-Object { $_.FullName }
-        Remove-SafeItems -Paths $paths -Description "Old MSI logs"
+        $null = Remove-SafeItems -Paths $paths -Description "Old MSI logs"
     }
 }
 
@@ -240,11 +240,11 @@ function Clear-MemoryDumps {
     foreach ($path in $dumpPaths) {
         if (Test-Path $path -PathType Leaf) {
             # Single file (MEMORY.DMP)
-            Remove-SafeItem -Path $path -Description "Memory dump"
+            $null = Remove-SafeItem -Path $path -Description "Memory dump"
         }
         elseif (Test-Path $path -PathType Container) {
             # Directory (Minidump, CrashDumps)
-            Clear-DirectoryContents -Path $path -Description "$(Split-Path -Leaf $path)"
+            $null = Clear-DirectoryContents -Path $path -Description "$(Split-Path -Leaf $path)"
         }
     }
 }
@@ -278,7 +278,7 @@ function Clear-SystemFontCache {
             # Clear font cache files
             $fontCachePath = "$env:WINDIR\ServiceProfiles\LocalService\AppData\Local\FontCache"
             if (Test-Path $fontCachePath) {
-                Clear-DirectoryContents -Path $fontCachePath -Description "System font cache"
+                $null = Clear-DirectoryContents -Path $fontCachePath -Description "System font cache"
             }
 
             # Restart font cache service

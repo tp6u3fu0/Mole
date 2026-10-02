@@ -41,7 +41,7 @@ function Clear-WindowsUpdateCache {
         
         try {
             Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
-            Clear-DirectoryContents -Path $wuPath -Description "Windows Update cache"
+            $null = Clear-DirectoryContents -Path $wuPath -Description "Windows Update cache"
             Start-Service -Name wuauserv -ErrorAction SilentlyContinue
         }
         catch {
@@ -73,7 +73,7 @@ function Clear-DeliveryOptimizationCache {
         
         try {
             Stop-Service -Name DoSvc -Force -ErrorAction SilentlyContinue
-            Clear-DirectoryContents -Path "$doPath\Cache" -Description "Delivery Optimization cache"
+            $null = Clear-DirectoryContents -Path "$doPath\Cache" -Description "Delivery Optimization cache"
             Start-Service -Name DoSvc -ErrorAction SilentlyContinue
         }
         catch {
@@ -96,7 +96,7 @@ function Clear-FontCache {
     $fontCachePath = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts\FontCache"
     
     if (Test-Path $fontCachePath) {
-        Remove-SafeItem -Path $fontCachePath -Description "Font cache"
+        $null = Remove-SafeItem -Path $fontCachePath -Description "Font cache"
     }
 }
 
@@ -125,7 +125,7 @@ function Clear-BrowserCaches {
     if (-not (Test-SkipRunningApp -AppName "Chrome" -ProcessNames 'chrome')) {
         foreach ($path in $chromeCachePaths) {
             if (Test-Path $path) {
-                Clear-DirectoryContents -Path $path -Description "Chrome $(Split-Path -Leaf $path)"
+                $null = Clear-DirectoryContents -Path $path -Description "Chrome $(Split-Path -Leaf $path)"
             }
         }
     }
@@ -143,7 +143,7 @@ function Clear-BrowserCaches {
     if (-not (Test-SkipRunningApp -AppName "Edge" -ProcessNames 'msedge')) {
         foreach ($path in $edgeCachePaths) {
             if (Test-Path $path) {
-                Clear-DirectoryContents -Path $path -Description "Edge $(Split-Path -Leaf $path)"
+                $null = Clear-DirectoryContents -Path $path -Description "Edge $(Split-Path -Leaf $path)"
             }
         }
     }
@@ -160,7 +160,7 @@ function Clear-BrowserCaches {
             )
             foreach ($path in $firefoxCachePaths) {
                 if (Test-Path $path) {
-                    Clear-DirectoryContents -Path $path -Description "Firefox cache"
+                    $null = Clear-DirectoryContents -Path $path -Description "Firefox cache"
                 }
             }
         }
@@ -169,13 +169,13 @@ function Clear-BrowserCaches {
     # Brave
     $braveCachePath = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Cache"
     if ((Test-Path $braveCachePath) -and -not (Test-SkipRunningApp -AppName "Brave" -ProcessNames 'brave')) {
-        Clear-DirectoryContents -Path $braveCachePath -Description "Brave cache"
+        $null = Clear-DirectoryContents -Path $braveCachePath -Description "Brave cache"
     }
 
     # Opera
     $operaCachePath = "$env:APPDATA\Opera Software\Opera Stable\Cache"
     if ((Test-Path $operaCachePath) -and -not (Test-SkipRunningApp -AppName "Opera" -ProcessNames 'opera')) {
-        Clear-DirectoryContents -Path $operaCachePath -Description "Opera cache"
+        $null = Clear-DirectoryContents -Path $operaCachePath -Description "Opera cache"
     }
     
     Stop-Section
@@ -201,7 +201,7 @@ function Clear-AppCaches {
     if (Test-SkipRunningApp -AppName "Spotify" -ProcessNames 'Spotify') { $spotifyCachePaths = @() }
     foreach ($path in $spotifyCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Spotify cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Spotify cache"
         }
     }
     
@@ -214,7 +214,7 @@ function Clear-AppCaches {
     if (Test-SkipRunningApp -AppName "Discord" -ProcessNames 'Discord') { $discordCachePaths = @() }
     foreach ($path in $discordCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Discord cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Discord cache"
         }
     }
     
@@ -228,7 +228,7 @@ function Clear-AppCaches {
     if (Test-SkipRunningApp -AppName "Slack" -ProcessNames 'slack') { $slackCachePaths = @() }
     foreach ($path in $slackCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Slack cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Slack cache"
         }
     }
     
@@ -245,30 +245,16 @@ function Clear-AppCaches {
     if (Test-SkipRunningApp -AppName "Teams" -ProcessNames 'Teams') { $teamsCachePaths = @() }
     foreach ($path in $teamsCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Teams cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Teams cache"
         }
     }
     
-    # VS Code
-    $vscodeCachePaths = @(
-        "$env:APPDATA\Code\Cache"
-        "$env:APPDATA\Code\CachedData"
-        "$env:APPDATA\Code\CachedExtensions"
-        "$env:APPDATA\Code\CachedExtensionVSIXs"
-        "$env:APPDATA\Code\Code Cache"
-        "$env:APPDATA\Code\GPUCache"
-    )
-    if (Test-SkipRunningApp -AppName "VS Code" -ProcessNames 'Code') { $vscodeCachePaths = @() }
-    foreach ($path in $vscodeCachePaths) {
-        if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "VS Code cache"
-        }
-    }
+    # VS Code caches are handled by Clear-EditorCaches (lib/clean/dev.ps1)
     
     # Zoom
     $zoomCachePath = "$env:APPDATA\Zoom\data"
     if ((Test-Path $zoomCachePath) -and -not (Test-SkipRunningApp -AppName "Zoom" -ProcessNames 'Zoom')) {
-        Clear-DirectoryContents -Path $zoomCachePath -Description "Zoom cache"
+        $null = Clear-DirectoryContents -Path $zoomCachePath -Description "Zoom cache"
     }
     
     # Adobe Creative Cloud
@@ -281,7 +267,7 @@ function Clear-AppCaches {
         $paths = Resolve-Path $pattern -ErrorAction SilentlyContinue
         foreach ($path in $paths) {
             if (Test-Path $path) {
-                Clear-DirectoryContents -Path $path.Path -Description "Adobe cache"
+                $null = Clear-DirectoryContents -Path $path.Path -Description "Adobe cache"
             }
         }
     }
@@ -289,13 +275,13 @@ function Clear-AppCaches {
     # Steam (download cache, not games)
     $steamCachePath = "${env:ProgramFiles(x86)}\Steam\appcache"
     if ((Test-Path $steamCachePath) -and -not (Test-SkipRunningApp -AppName "Steam" -ProcessNames 'steam')) {
-        Clear-DirectoryContents -Path $steamCachePath -Description "Steam app cache"
+        $null = Clear-DirectoryContents -Path $steamCachePath -Description "Steam app cache"
     }
     
     # Epic Games Launcher
     $epicCachePath = "$env:LOCALAPPDATA\EpicGamesLauncher\Saved\webcache"
     if ((Test-Path $epicCachePath) -and -not (Test-SkipRunningApp -AppName "Epic Games" -ProcessNames 'EpicGamesLauncher')) {
-        Clear-DirectoryContents -Path $epicCachePath -Description "Epic Games cache"
+        $null = Clear-DirectoryContents -Path $epicCachePath -Description "Epic Games cache"
     }
     
     Stop-Section
@@ -314,7 +300,7 @@ function Clear-StoreAppCaches {
     # Microsoft Store cache
     $storeCache = "$env:LOCALAPPDATA\Microsoft\Windows\WCN"
     if (Test-Path $storeCache) {
-        Clear-DirectoryContents -Path $storeCache -Description "Windows Store cache"
+        $null = Clear-DirectoryContents -Path $storeCache -Description "Windows Store cache"
     }
     
     # Store app temp files
@@ -322,7 +308,7 @@ function Clear-StoreAppCaches {
     $storePaths = Resolve-Path $storeTemp -ErrorAction SilentlyContinue
     foreach ($path in $storePaths) {
         if (Test-Path $path.Path) {
-            Clear-DirectoryContents -Path $path.Path -Description "Store LocalCache"
+            $null = Clear-DirectoryContents -Path $path.Path -Description "Store LocalCache"
         }
     }
 }
@@ -340,7 +326,7 @@ function Clear-DotNetCaches {
     # .NET temp files
     $dotnetTemp = "$env:LOCALAPPDATA\Temp\Microsoft.NET"
     if (Test-Path $dotnetTemp) {
-        Clear-DirectoryContents -Path $dotnetTemp -Description ".NET temp files"
+        $null = Clear-DirectoryContents -Path $dotnetTemp -Description ".NET temp files"
     }
     
     # NGen cache (don't touch - managed by Windows)
@@ -372,7 +358,7 @@ function Clear-GPUShaderCaches {
     )
     foreach ($path in $nvidiaCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "NVIDIA shader cache"
+            $null = Clear-DirectoryContents -Path $path -Description "NVIDIA shader cache"
         }
     }
     
@@ -384,7 +370,7 @@ function Clear-GPUShaderCaches {
     )
     foreach ($path in $amdCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "AMD shader cache"
+            $null = Clear-DirectoryContents -Path $path -Description "AMD shader cache"
         }
     }
     
@@ -395,26 +381,26 @@ function Clear-GPUShaderCaches {
     )
     foreach ($path in $intelCachePaths) {
         if (Test-Path $path) {
-            Clear-DirectoryContents -Path $path -Description "Intel shader cache"
+            $null = Clear-DirectoryContents -Path $path -Description "Intel shader cache"
         }
     }
     
     # DirectX shader cache (system-wide)
     $dxCachePath = "$env:LOCALAPPDATA\D3DSCache"
     if (Test-Path $dxCachePath) {
-        Clear-DirectoryContents -Path $dxCachePath -Description "DirectX shader cache"
+        $null = Clear-DirectoryContents -Path $dxCachePath -Description "DirectX shader cache"
     }
     
     # DirectX pipeline cache
     $dxPipelinePath = "$env:LOCALAPPDATA\Microsoft\DirectX Shader Cache"
     if (Test-Path $dxPipelinePath) {
-        Clear-DirectoryContents -Path $dxPipelinePath -Description "DirectX pipeline cache"
+        $null = Clear-DirectoryContents -Path $dxPipelinePath -Description "DirectX pipeline cache"
     }
     
     # Vulkan pipeline cache (common location)
     $vulkanCachePath = "$env:LOCALAPPDATA\VulkanCache"
     if (Test-Path $vulkanCachePath) {
-        Clear-DirectoryContents -Path $vulkanCachePath -Description "Vulkan pipeline cache"
+        $null = Clear-DirectoryContents -Path $vulkanCachePath -Description "Vulkan pipeline cache"
     }
     
     Stop-Section

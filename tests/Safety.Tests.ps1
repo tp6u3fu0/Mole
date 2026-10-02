@@ -247,3 +247,57 @@ Describe "Clean confirmation" {
         $output | Should -Not -Match "User essentials"
     }
 }
+
+Describe "Cleanup output" {
+    It "Should not leak return values from cleanup calls to the console" {
+        # A bare call prints its result hashtable (Size/Removed/Failed) between progress lines
+        $pattern = '^\s*(Clear-DirectoryContents|Remove-SafeItems?|Remove-OldFiles|Remove-EmptyDirectories)\b'
+        $files = Get-ChildItem -Path "$script:LibDir\clean", $script:BinDir -Filter *.ps1
+        $bare = @($files | Select-String -Pattern $pattern | ForEach-Object { "$($_.Filename):$($_.LineNumber)" })
+        $bare | Should -BeNullOrEmpty
+    }
+}
+
+Describe "Error report cleanup" {
+    BeforeAll {
+        . "$script:LibDir\clean\user.ps1"
+    }
+
+    BeforeEach {
+        $script:SavedLocalAppData = $env:LOCALAPPDATA
+        $script:SavedUserProfile = $env:USERPROFILE
+
+        $fake = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        $env:LOCALAPPDATA = Join-Path $fake "Local"
+        $env:USERPROFILE = Join-Path $fake "Profile"
+
+        $archive = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\WER\ReportArchive\AppCrash_1"
+        $crashDumps = Join-Path $env:LOCALAPPDATA "CrashDumps"
+        New-Item -ItemType Directory -Path $archive, $crashDumps, $env:USERPROFILE -Force | Out-Null
+
+        $old = (Get-Date).AddDays(-30)
+        foreach ($file in @("$archive\Report.wer", "$crashDumps\app.exe.1234.dmp", "$env:USERPROFILE\old.dmp")) {
+            [System.IO.File]::WriteAllBytes($file, (New-Object byte[] 1024))
+            (Get-Item -LiteralPath $file).LastWriteTime = $old
+        }
+        [System.IO.File]::WriteAllBytes("$crashDumps\fresh.dmp", (New-Object byte[] 1024))
+
+        Reset-CleanupStats
+        Set-DryRunMode -Enabled $true
+    }
+
+    AfterEach {
+        Set-DryRunMode -Enabled $false
+        $env:LOCALAPPDATA = $script:SavedLocalAppData
+        $env:USERPROFILE = $script:SavedUserProfile
+    }
+
+    It "Should count each old file once and leave recent reports" {
+        $output = @(Clear-ErrorReports -DaysOld 7)
+
+        $output | Should -BeNullOrEmpty
+        $stats = Get-CleanupStats
+        $stats.FilesCleaned | Should -Be 3
+        $stats.TotalSizeKB | Should -Be 3
+    }
+}
